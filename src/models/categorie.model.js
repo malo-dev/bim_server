@@ -1,58 +1,65 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js';
+import { DataTypes } from "sequelize";
+import sequelize from "../config/database.js";
 
-const Categories = sequelize.define(
-  'Category',
+const Category = sequelize.define(
+  "Category",
   {
     categoryId: {
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
+      allowNull: false,
     },
+
     name: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(150),
       allowNull: false,
       validate: {
         notEmpty: true,
       },
     },
+
     description: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT,
       allowNull: false,
       validate: {
         notEmpty: true,
       },
     },
+
     commerceId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       allowNull: true,
       references: {
-        model: 'commerces',
-        key: 'commerceId',
+        model: "commerces",
+        key: "commerceId",
       },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
     },
-   branchTrackId: {
-  type: DataTypes.INTEGER.UNSIGNED,
-  allowNull: true,
-  references: {
-    model: 'branchTracks',
-    key: 'branchTrackId',
-  },
-  onUpdate: 'CASCADE',
-  onDelete: 'SET NULL',
-},
 
+    branchTrackId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "branch_tracks",
+        key: "branchTrackId",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
   },
   {
-    tableName: 'categories',
+    tableName: "categories",
     timestamps: true,
+    underscored: false,
     indexes: [
       {
         unique: true,
-        fields: ['name'], // unicité via index
+        fields: ["name", "commerceId"], // unicité logique
       },
     ],
   }
 );
 
-export default Categories;
+export default Category;

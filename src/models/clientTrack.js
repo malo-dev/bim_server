@@ -1,60 +1,69 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js';
+import { DataTypes } from "sequelize";
+import sequelize from "../config/database.js";
 
 const ClientTrack = sequelize.define(
-  'ClientTrack',
+  "ClientTrack",
   {
     clientTrackId: {
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
+      allowNull: false,
     },
+
     name: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(150),
       allowNull: false,
       validate: { notEmpty: true },
     },
+
     email: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(255),
       allowNull: false,
       validate: { notEmpty: true, isEmail: true },
     },
+
     description: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT,
       allowNull: false,
       validate: { notEmpty: true },
     },
+
     imageUrl: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(500),
       allowNull: true,
     },
+
     commerceId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       allowNull: true,
       references: {
-        model: 'commerces',
-        key: 'commerceId',
+        model: "commerces",
+        key: "commerceId",
       },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
     },
-    branchTrackId: {
-  type: DataTypes.INTEGER.UNSIGNED,
-  allowNull: true,
-  references: {
-    model: 'branchTracks',
-    key: 'branchTrackId',
-  },
-  onUpdate: 'CASCADE',
-  onDelete: 'SET NULL',
-},
 
+    branchTrackId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "branch_tracks",
+        key: "branchTrackId",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
   },
   {
-    tableName: 'clientTracks',
+    tableName: "client_tracks",
     timestamps: true,
+    underscored: false,
     indexes: [
       {
         unique: true,
-        fields: ['email'], // unicité via index
+        fields: ["email"],
       },
     ],
   }

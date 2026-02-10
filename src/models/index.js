@@ -15,131 +15,96 @@ import Redevtrack from './redevtrack.model.js';
 import FeedBackTrack from './feedbackTrack.model.js';
 import SupportTrack from './supportTrack.model.js';
 import History from './history.model.js';
-
 import BusinessCategory from './businessCategory.js';
 import Company from './company.model.js';
 import Bonus from './bonusTrack.model.js';
-
 import Transaction from './transaction.model.js';
-import TransactionRetrait from './TransactionRetrait.model.js'
+import TransactionRetrait from './TransactionRetrait.model.js';
 import TransactionTransfert from './transfertTransaction.model.js';
 import TransactionRecharge from './transactionRecharge.model.js';
 import TransactionPaiement from './paiementTrasanction.model.js';
-User.belongsToMany(Role, {
-  through: UserRole,
-  foreignKey: 'userId',
-  as: 'role',
-});
 
-Role.belongsToMany(User, {
-  through: UserRole,
-  foreignKey: 'roleId',
-});
+// ---------------------------
+// User ↔ Role (many-to-many)
+// ---------------------------
+User.belongsToMany(Role, { through: UserRole, foreignKey: 'userId', as: 'roles' });
+Role.belongsToMany(User, { through: UserRole, foreignKey: 'roleId', as: 'users' });
 
-Product.belongsTo(Currency, {
-  foreignKey: 'currencyId',
-  as: 'currency',
-});
+// ---------------------------
+// Product ↔ Currency
+// ---------------------------
+Product.belongsTo(Currency, { foreignKey: 'currencyId', as: 'currency' });
+Currency.hasMany(Product, { foreignKey: 'currencyId', as: 'products' });
 
-Currency.hasMany(Product, {
-  foreignKey: 'currencyId',
-  as: 'products',
-});
+// ProductSold ↔ Currency
+ProductSold.belongsTo(Currency, { foreignKey: 'currencyId', as: 'currency' });
+Currency.hasMany(ProductSold, { foreignKey: 'currencyId', as: 'productsSold' });
 
+// ---------------------------
+// Product ↔ Category (many-to-many)
+// ---------------------------
+Product.belongsToMany(Category, { through: ProductCategory, foreignKey: 'productId', as: 'categories' });
+Category.belongsToMany(Product, { through: ProductCategory, foreignKey: 'categoryId', as: 'products' });
 
-ProductSold.belongsTo(Currency, {
-  foreignKey: 'currencyId',
-  as: 'currency',
-});
-
-Currency.hasMany(ProductSold, {
-  foreignKey: 'currencyId',
-  as: 'productsSold',
-});
-
-
-
-
-Product.belongsToMany(Category, {
-  through: ProductCategory,
-  foreignKey: 'productId',
-  as: 'categories',
-});
-
-Category.belongsToMany(Product, {
-  through: ProductCategory,
-  foreignKey: 'categoryId',
-  as: 'products',
-});
-
+// Product ↔ ProductSold (one-to-many)
 Product.hasMany(ProductSold, { foreignKey: 'productId', as: 'productSold' });
-ProductSold.belongsTo(Product, {
-  foreignKey: 'productId',
-  as: 'product',
-});
+ProductSold.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
 
-User.hasMany(BranchTrack, { foreignKey: 'branchTrackId', as: 'branchTrack' });
-BranchTrack.belongsTo(User, {
-  foreignKey: 'branchTrackId',
-  as: 'user',
-});
+// ---------------------------
+// User ↔ BranchTrack
+// ---------------------------
+User.hasMany(BranchTrack, { foreignKey: 'userId', as: 'branchTracks' });
+BranchTrack.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
+// Commerce ↔ BranchTrack
+Commerce.hasMany(BranchTrack, { foreignKey: 'commerceId', as: 'branchTracks' });
+BranchTrack.belongsTo(Commerce, { foreignKey: 'commerceId', as: 'commerce' });
 
-History.hasMany(User, { foreignKey: 'id', as: 'userIdTrack' });
-User.belongsTo(History, {
-  foreignKey: 'id',
-  as: 'historyTrack',
-});
+// ---------------------------
+// User ↔ History
+// ---------------------------
+User.hasMany(History, { foreignKey: 'id', as: 'historyTracks' }); // id = userId dans History
+History.belongsTo(User, { foreignKey: 'id', as: 'user' });
 
+// ---------------------------
+// User ↔ Commerce
+// ---------------------------
+User.hasMany(Commerce, { foreignKey: 'commerceId', as: 'commerces' });
+Commerce.belongsTo(User, { foreignKey: 'commerceId', as: 'user' });
 
+// ---------------------------
+// Notifications
+// ---------------------------
+User.hasMany(Notification, { foreignKey: 'id', as: 'notifications' });
+Notification.belongsTo(User, { foreignKey: 'id', as: 'user' });
 
-User.hasMany(Commerce, { foreignKey: 'commerceId', as: 'commerce' });
-Commerce.belongsTo(User, {
-  foreignKey: 'commerceId',
-  as: 'user',
-});
+Commerce.hasMany(Notification, { foreignKey: 'commerceId', as: 'notifications' });
+Notification.belongsTo(Commerce, { foreignKey: 'commerceId', as: 'commerce' });
 
-Commerce.hasMany(BranchTrack, { foreignKey: 'commerceId', as: 'branchTrack' });
-BranchTrack.belongsTo(Commerce, {
-  foreignKey: 'commerceId',
-  as: 'commerce',
-});
+ExpeTrack.hasMany(Notification, { foreignKey: 'expeTrackId', as: 'notifications' });
+Notification.belongsTo(ExpeTrack, { foreignKey: 'expeTrackId', as: 'expeTrack' });
 
+BranchTrack.hasMany(Notification, { foreignKey: 'branchTrackId', as: 'notifications' });
+Notification.belongsTo(BranchTrack, { foreignKey: 'branchTrackId', as: 'branchTrack' });
 
-User.hasMany(Notification, { foreignKey: 'userId' });
-Notification.belongsTo(User, { foreignKey: 'userId' });
+// ---------------------------
+// BusinessCategory ↔ Company
+// ---------------------------
+BusinessCategory.hasMany(Company, { foreignKey: 'bussinessId', as: 'companies' });
+Company.belongsTo(BusinessCategory, { foreignKey: 'bussinessId', as: 'category' });
 
-Commerce.hasMany(Notification, { foreignKey: 'commerceId' });
-Notification.belongsTo(Commerce, { foreignKey: 'commerceId' });
+// ---------------------------
+// Bonus ↔ User ↔ Company
+// ---------------------------
+User.hasMany(Bonus, { foreignKey: 'userId', as: 'bonuses' });
+Bonus.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
-ExpeTrack.hasMany(Notification, { foreignKey: 'expeTrackId' });
-Notification.belongsTo(ExpeTrack, { foreignKey: 'expeTrackId' });
+Company.hasMany(Bonus, { foreignKey: 'companyId', as: 'bonuses' });
+Bonus.belongsTo(Company, { foreignKey: 'companyId', as: 'company' });
 
-BranchTrack.hasMany(Notification, { foreignKey: 'branchTrackId' });
-Notification.belongsTo(BranchTrack, { foreignKey: 'branchTrackId' });
-
-
-
-BusinessCategory.hasMany(Company, {
-  foreignKey: "bussinessId",
-  as: "companies",
-});
-
-Company.belongsTo(BusinessCategory, {
-  foreignKey: "bussinessId",
-  as: "category",
-});
-User.hasMany(Bonus, { foreignKey: "id" });
-Bonus.belongsTo(User, { foreignKey: "id" });
-
-Bonus.belongsTo(User, { foreignKey: "id" });
-Bonus.belongsTo(Company, { foreignKey: "companyId" });
-
-
-Company.hasMany(Bonus, { foreignKey: "companyId" });
-Bonus.belongsTo(Company, { foreignKey: "companyId" });
-
-
+// ---------------------------
+// Export all models
+// ---------------------------
 export {
   User,
   Role,
@@ -164,5 +129,6 @@ export {
   TransactionRecharge,
   TransactionPaiement,
   Bonus,
-  Company
+  Company,
+  BusinessCategory
 };

@@ -1,54 +1,68 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js';
-import Currency from './currency.model.js';
+import { DataTypes } from "sequelize";
+import sequelize from "../config/database.js";
+import Currency from "./currency.model.js";
 
 const Product = sequelize.define(
-  'Product',
+  "Product",
   {
     productId: {
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
+      allowNull: false,
     },
+
     name: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(200),
       allowNull: false,
+      validate: { notEmpty: true },
     },
+
     price: {
-      type: DataTypes.STRING,
+      type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
+      validate: { min: 0 },
     },
+
     description: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT,
       allowNull: false,
+      validate: { notEmpty: true },
     },
-      TVA: {
-      type: DataTypes.STRING,
+
+    TVA: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: true,
+      validate: { min: 0 },
+    },
+
+    EAN: {
+      type: DataTypes.STRING(50),
       allowNull: true,
     },
-      EAN: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
+
     qty: {
-      type: DataTypes.STRING,
+      type: DataTypes.INTEGER,
       allowNull: false,
+      validate: { min: 0 },
     },
-    threehold: {
-      type: DataTypes.STRING,
+
+    threshold: {  // renommé pour cohérence
+      type: DataTypes.INTEGER,
       allowNull: true,
+      validate: { min: 0 },
     },
+
     expiredAt: {
       type: DataTypes.DATE,
       allowNull: true,
       set(value) {
-        if (value) {
-          this.setDataValue('expiredAt', new Date(value));
-        }
+        if (value) this.setDataValue("expiredAt", new Date(value));
       },
     },
-    Availability: {
-      type: DataTypes.STRING,
+
+    availability: {  // renommé pour cohérence camelCase
+      type: DataTypes.STRING(50),
       allowNull: true,
     },
 
@@ -56,41 +70,42 @@ const Product = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+
     currencyId: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
         model: Currency,
-        key: 'currencyId',
-      }
-     
+        key: "currencyId",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "RESTRICT",
     },
 
-     commerceId: {
-  type: DataTypes.INTEGER.UNSIGNED, 
-  allowNull: true,
-  references: {
-    model: 'commerces',
-    key: 'commerceId',
-  },
-  onUpdate: 'CASCADE',
-  onDelete: 'SET NULL',
-},
+    commerceId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "commerces",
+        key: "commerceId",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
 
-     branchTrackId: {
-  type: DataTypes.INTEGER.UNSIGNED,
-  allowNull: true,
-  references: {
-    model: 'branchTracks',
-    key: 'branchTrackId',
-  },
-  onUpdate: 'CASCADE',
-  onDelete: 'SET NULL',
-},
-
+    branchTrackId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "branchTracks",
+        key: "branchTrackId",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
   },
   {
-    tableName: 'products',
+    tableName: "products",
     timestamps: true,
   }
 );

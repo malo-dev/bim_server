@@ -1,125 +1,136 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js';
+import { DataTypes } from "sequelize";
+import sequelize from "../config/database.js";
 
 const ExpeTrack = sequelize.define(
-  'ExpeTrack',
+  "ExpeTrack",
   {
     expeTrackId: {
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
+      allowNull: false,
     },
 
     reference: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(100),
       allowNull: false,
-      comment: 'Numéro unique de la fiche d’expédition',
+      comment: "Numéro unique de la fiche d’expédition",
     },
 
     shipmentDate: {
       type: DataTypes.DATE,
       allowNull: false,
-      comment: 'Date d’expédition',
-       set(value) {
+      comment: "Date d’expédition",
+      set(value) {
         if (value) {
-          this.setDataValue('shipmentDate', new Date(value));
+          this.setDataValue("shipmentDate", new Date(value));
         }
       },
-      
     },
 
     expectedArrivalDate: {
       type: DataTypes.DATE,
       allowNull: true,
-      comment: 'Date d’arrivée prévue',
-       set(value) {
+      comment: "Date d’arrivée prévue",
+      set(value) {
         if (value) {
-          this.setDataValue('expectedArrivalDate', new Date(value));
+          this.setDataValue("expectedArrivalDate", new Date(value));
         }
       },
     },
 
     origin: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(150),
       allowNull: false,
-      comment: 'Lieu de départ',
+      comment: "Lieu de départ",
     },
 
     destination: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(150),
       allowNull: false,
-      comment: 'Lieu de destination',
+      comment: "Lieu de destination",
     },
 
     carrierName: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(150),
       allowNull: true,
-      comment: 'Nom du transporteur',
+      comment: "Nom du transporteur",
     },
 
     vehiclePlate: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(50),
       allowNull: true,
-      comment: 'Plaque du véhicule',
+      comment: "Plaque du véhicule",
     },
 
     totalPackages: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      comment: 'Nombre total de colis',
+      comment: "Nombre total de colis",
     },
 
     totalWeight: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
-      comment: 'Poids total expédié',
+      comment: "Poids total expédié",
+      validate: { min: 0 },
     },
 
     status: {
-      type: DataTypes.ENUM('EN_ATTENTE', 'EXPEDIE', 'RECU_PARTIEL', 'RECU_COMPLET', 'LITIGE'),
-      defaultValue: 'EN_ATTENTE',
+      type: DataTypes.ENUM(
+        "EN_ATTENTE",
+        "EXPEDIE",
+        "RECU_PARTIEL",
+        "RECU_COMPLET",
+        "LITIGE"
+      ),
+      allowNull: false,
+      defaultValue: "EN_ATTENTE",
     },
 
     remarks: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: 'Observations à l’expédition',
+      comment: "Observations à l’expédition",
     },
 
     commerceId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: 'commerces',
-        key: 'commerceId',
+        model: "commerces",
+        key: "commerceId",
       },
+      onUpdate: "CASCADE",
+      onDelete: "RESTRICT",
     },
 
     branchTrackId: {
-  type: DataTypes.INTEGER.UNSIGNED,
-  allowNull: true,
-  references: {
-    model: 'branchTracks',
-    key: 'branchTrackId',
-  },
-  onUpdate: 'CASCADE',
-  onDelete: 'SET NULL',
-},
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "branch_tracks",
+        key: "branchTrackId",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
 
     imageUrl: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(500),
       allowNull: true,
     },
   },
   {
-    tableName: 'expeTracks',
+    tableName: "expe_tracks",
     timestamps: true,
-       indexes: [
-    {
-      unique: true,
-      fields: ['reference'],
-    },
-  ],
+    underscored: false,
+    indexes: [
+      {
+        unique: true,
+        fields: ["reference"],
+      },
+    ],
   }
 );
 

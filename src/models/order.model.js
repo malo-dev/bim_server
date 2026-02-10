@@ -1,6 +1,7 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
 import User from "./User.model.js";
+
 const Order = sequelize.define(
   "Order",
   {
@@ -8,55 +9,63 @@ const Order = sequelize.define(
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
-    },
-
-    orderNumber: {
-      type: DataTypes.STRING,
       allowNull: false,
     },
 
-     id: {
+    orderNumber: {
+      type: DataTypes.STRING(100),
+      allowNull: false,
+      validate: { notEmpty: true },
+    },
+
+    userId: {
       type: DataTypes.INTEGER,
       allowNull: true,
       references: {
         model: User,
-        key: 'id',
-      },},
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
 
-       companyId: {
+    companyId: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
         model: "companies",
         key: "companyId",
-      }
-    
+      },
+      onUpdate: "CASCADE",
+      onDelete: "RESTRICT",
     },
 
-      productId: {
+    productId: {
       type: DataTypes.INTEGER,
-     allowNull: false,
-
-        references: {
-        model: "companies",
-        key: "companyId",
-      }
+      allowNull: false,
+      references: {
+        model: "products", // remplacer par la table réelle des produits
+        key: "productId",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "RESTRICT",
     },
-     branchTrackId: {
-  type: DataTypes.INTEGER.UNSIGNED,
-  allowNull: true,
-  references: {
-    model: 'branchTracks',
-    key: 'branchTrackId',
-  },
-  onUpdate: 'CASCADE',
-  onDelete: 'SET NULL',
-},
-      
+
+    branchTrackId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "branch_tracks",
+        key: "branchTrackId",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
 
     totalAmount: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
+      validate: { min: 0 },
     },
 
     status: {
@@ -69,11 +78,12 @@ const Order = sequelize.define(
         "delivered",
         "cancelled"
       ),
+      allowNull: false,
       defaultValue: "pending",
     },
 
     paymentMethod: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(50),
       allowNull: true,
     },
 
@@ -93,10 +103,9 @@ const Order = sequelize.define(
     indexes: [
       {
         unique: true,
-        fields: ['orderNumber'],
+        fields: ["orderNumber"],
       },
     ],
-
   }
 );
 

@@ -1,12 +1,10 @@
 import app from '../app.js';
 import './models/index.js';
 import sequelize from './config/database.js';
-
 // eslint-disable-next-line no-undef
 const PORT = process.env.PORT || 8083;
 
-sequelize.sync({force:true})
-  
+sequelize.sync({ force: false, alter: false })
   .then(() => {
     console.log('✅ Base de données connectée');
     app.listen(PORT, () => {

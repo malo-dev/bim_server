@@ -8,10 +8,11 @@ const Company = sequelize.define(
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
+      allowNull: false,
     },
 
     name: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(150),
       allowNull: false,
       validate: { notEmpty: true },
     },
@@ -22,45 +23,45 @@ const Company = sequelize.define(
     },
 
     logo: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
 
     location: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
 
     email: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(255),
       allowNull: false,
       validate: { notEmpty: true, isEmail: true },
     },
 
- branchTrackId: {
-  type: DataTypes.INTEGER.UNSIGNED,
-  allowNull: true,
-  references: {
-    model: 'branchTracks',
-    key: 'branchTrackId',
-  },
-  onUpdate: 'CASCADE',
-  onDelete: 'SET NULL',
-},
-
+    branchTrackId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "branch_tracks",
+        key: "branchTrackId",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
 
     imageUrl: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(500),
       allowNull: true,
     },
   },
   {
     tableName: "companies",
     timestamps: true,
+    underscored: false,
     indexes: [
       {
         unique: true,
-        fields: ["email"], // unicité via index
+        fields: ["email"],
       },
     ],
   }

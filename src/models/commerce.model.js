@@ -1,47 +1,53 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js';
-import User from './User.model.js';
+import { DataTypes } from "sequelize";
+import sequelize from "../config/database.js";
+import User from "./User.model.js";
 
 const Commerce = sequelize.define(
-  'Commerce',
+  "Commerce",
   {
     commerceId: {
-      type: DataTypes.INTEGER.UNSIGNED,
-      autoIncrement: true,
+       type: DataTypes.INTEGER,
       primaryKey: true,
+      autoIncrement: true,
+      allowNull: false,
     },
-    commercename: {
-      type: DataTypes.STRING,
+
+    commerceName: {
+      type: DataTypes.STRING(150),
       allowNull: false,
       validate: { notEmpty: true },
     },
-    commerceemail: {
-      type: DataTypes.STRING,
+
+    commerceEmail: {
+      type: DataTypes.STRING(255),
       allowNull: false,
       validate: { notEmpty: true, isEmail: true },
     },
-    id: {
+
+    userId: {
       type: DataTypes.INTEGER,
       allowNull: true,
       references: {
         model: User,
-        key: 'id',
+        key: "id",
       },
-      onUpdate: 'CASCADE',
-      onDelete: 'SET NULL',
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
     },
+
     imageUrl: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(500),
       allowNull: true,
     },
   },
   {
-    tableName: 'commerces',
+    tableName: "commerces",
     timestamps: true,
+    underscored: false,
     indexes: [
       {
         unique: true,
-        fields: ['commerceemail'],
+        fields: ["commerceEmail"],
       },
     ],
   }

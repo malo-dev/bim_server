@@ -1,47 +1,55 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js';
+import { DataTypes } from "sequelize";
+import sequelize from "../config/database.js";
 
 const BranchTrack = sequelize.define(
-  'BranchTrack',
+  "BranchTrack",
   {
-   branchTrackId: {
-  type: DataTypes.INTEGER.UNSIGNED,
-  primaryKey: true,
-  autoIncrement: true,
-}
-,
-    branchTrackname: {
-      type: DataTypes.STRING,
+    branchTrackId: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true,
       allowNull: false,
     },
-    branchTrackemail: {
-      type: DataTypes.STRING,
+
+    branchTrackName: {
+      type: DataTypes.STRING(255),
       allowNull: false,
-    
     },
-    commerceId: {
-      type: DataTypes.INTEGER.UNSIGNED,
-      allowNull: true,
-      references: {
-        model: 'commerces',
-        key: 'commerceId',
+
+    branchTrackEmail: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+      validate: {
+        isEmail: true,
       },
     },
 
+    commerceId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "commerces",
+        key: "commerceId",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
+
     imageUrl: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(500),
       allowNull: true,
     },
   },
   {
-    tableName: 'branchTracks',
+    tableName: "branchTracks",
     timestamps: true,
-        indexes: [
-    {
-      unique: true,
-      fields: ['branchTrackemail'],
-    },
-  ],
+    underscored: false,
+    indexes: [
+      {
+        unique: true,
+        fields: ["branchTrackEmail"],
+      },
+    ],
   }
 );
 

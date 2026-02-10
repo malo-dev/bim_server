@@ -12,10 +12,9 @@ const User = sequelize.define(
     username: {
       type: DataTypes.STRING,
       allowNull: false,
+      validate: { notEmpty: true },
     },
-
-
-     fullname: {
+    fullname: {
       type: DataTypes.STRING,
       allowNull: true,
     },
@@ -34,6 +33,7 @@ const User = sequelize.define(
     email: {
       type: DataTypes.STRING,
       allowNull: false,
+      validate: { notEmpty: true, isEmail: true },
     },
     password: {
       type: DataTypes.STRING,
@@ -63,11 +63,11 @@ const User = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
-    Token: {
+    token: {               // harmonisé
       type: DataTypes.STRING,
       allowNull: true,
     },
-    TokenAbonemment: {
+    tokenAbonnement: {     // harmonisé
       type: DataTypes.STRING,
       allowNull: true,
     },
@@ -91,7 +91,6 @@ const User = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },
-
     isAgent: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
@@ -101,26 +100,25 @@ const User = sequelize.define(
       allowNull: true,
     },
     commerceId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       allowNull: true,
       references: {
         model: 'commerces',
         key: 'commerceId',
       },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
     },
-   branchTrackId: {
-  type: DataTypes.INTEGER.UNSIGNED,
-  allowNull: true,
-  references: {
-    model: 'branchTracks',
-    key: 'branchTrackId',
-  },
-  onUpdate: 'CASCADE',
-  onDelete: 'SET NULL',
-},
-
-
-
+    branchTrackId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'branchTracks',
+        key: 'branchTrackId',
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+    },
     expoPushToken: {
       type: DataTypes.STRING,
       allowNull: true,

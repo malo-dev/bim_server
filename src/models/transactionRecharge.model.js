@@ -1,50 +1,61 @@
-import { DataTypes } from "sequelize";
-import sequelize from "../config/database.js";
+import { DataTypes } from 'sequelize';
+import sequelize from '../config/database.js';
 
 const TransactionRecharge = sequelize.define(
-  "TransactionRecharge",
+  'TransactionRecharge',
   {
     transactionRechargeId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
+      allowNull: false,
     },
+
     amount: {
       type: DataTypes.FLOAT,
       allowNull: false,
-      validate: { notEmpty: true },
+      validate: { min: 0 },
+      comment: 'Montant de la recharge',
     },
+
     telephone: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(20),
       allowNull: true,
+      comment: 'Numéro de téléphone associé à la recharge',
     },
+
     reference: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(100),
       allowNull: false,
       validate: { notEmpty: true },
+      comment: 'Référence unique de la recharge',
     },
+
     status: {
-      type: DataTypes.ENUM("pending", "success", "failed"),
-      defaultValue: "pending",
+      type: DataTypes.ENUM('pending', 'success', 'failed'),
+      defaultValue: 'pending',
+      comment: 'Statut de la recharge',
     },
+
     id: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: "users",
-        key: "id",
+        model: 'users',
+        key: 'id',
       },
-      onUpdate: "CASCADE",
-      onDelete: "RESTRICT",
+      onUpdate: 'CASCADE',
+      onDelete: 'RESTRICT',
+      comment: 'Référence de l’utilisateur',
     },
   },
   {
-    tableName: "transactionsRecharge",
+    tableName: 'transactionsRecharge',
     timestamps: true,
     indexes: [
       {
         unique: true,
-        fields: ["reference"], // unicité via index
+        fields: ['reference'],
       },
     ],
   }

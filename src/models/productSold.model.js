@@ -1,6 +1,7 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js';
 import Currency from './currency.model.js';
+
 const ProductSold = sequelize.define(
   'ProductSold',
   {
@@ -8,7 +9,9 @@ const ProductSold = sequelize.define(
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
+      allowNull: false,
     },
+
     productId: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -16,72 +19,85 @@ const ProductSold = sequelize.define(
         model: 'products',
         key: 'productId',
       },
+      onUpdate: 'CASCADE',
+      onDelete: 'RESTRICT',
     },
 
-    
     name: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(200),
       allowNull: true,
     },
 
     priceOfSelling: {
-      type: DataTypes.STRING,
+      type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
+      validate: { min: 0 },
     },
+
     priceAfterCredit: {
-      type: DataTypes.STRING,
+      type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
+      validate: { min: 0 },
     },
+
     benefice: {
-      type: DataTypes.STRING,
+      type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
+      validate: { min: 0 },
     },
 
     qty: {
-      type: DataTypes.STRING,
+      type: DataTypes.INTEGER,
       allowNull: false,
+      validate: { min: 0 },
     },
-    threehold: {
-      type: DataTypes.STRING,
+
+    threshold: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      validate: { min: 0 },
+    },
+
+    availability: {
+      type: DataTypes.STRING(50),
       allowNull: true,
     },
 
-    AvailabilityOfProduct: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
     commerceId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       allowNull: true,
       references: {
         model: 'commerces',
         key: 'commerceId',
       },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
     },
-  branchTrackId: {
-  type: DataTypes.INTEGER.UNSIGNED,
-  allowNull: true,
-  references: {
-    model: 'branchTracks',
-    key: 'branchTrackId',
-  },
-  onUpdate: 'CASCADE',
-  onDelete: 'SET NULL',
-},
 
+    branchTrackId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'branchTracks',
+        key: 'branchTrackId',
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+    },
 
-     currencyId: {
+    currencyId: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
         model: Currency,
         key: 'currencyId',
-      }
-     
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'RESTRICT',
     },
   },
   {
-    tableName: 'productSolds',
+    tableName: 'product_solds', // snake_case pour cohérence
     timestamps: true,
   }
 );

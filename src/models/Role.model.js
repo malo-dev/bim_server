@@ -1,6 +1,6 @@
-import Sequelize from 'sequelize';
+import { DataTypes } from 'sequelize';
 import sequelize from '../config/database.js';
-const { DataTypes } = Sequelize;
+
 const Role = sequelize.define(
   'Role',
   {
@@ -8,25 +8,30 @@ const Role = sequelize.define(
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
-    },
-    name: {
-      type: DataTypes.STRING,
       allowNull: false,
     },
+    name: {
+      type: DataTypes.STRING(100),
+      allowNull: false,
+      validate: { notEmpty: true },
+      comment: 'Nom unique du rôle',
+    },
     description: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(255),
       allowNull: true,
-    }
+      comment: 'Description du rôle',
+    },
   },
   {
     tableName: 'roles',
     timestamps: true,
-       indexes: [
-    {
-      unique: true,
-      fields: ['name'],
-    },
-  ],
+    indexes: [
+      {
+        unique: true,
+        fields: ['name'],
+      },
+    ],
   }
 );
+
 export default Role;

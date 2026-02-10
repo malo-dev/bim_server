@@ -1,56 +1,65 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js';
+import { DataTypes } from "sequelize";
+import sequelize from "../config/database.js";
 
 const FeedBackTrack = sequelize.define(
-  'FeedBackTrack',
+  "FeedBackTrack",
   {
-    FeedBackTrackId: {
+    feedBackTrackId: {
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
-    },
-    name: {
-      type: DataTypes.STRING,
       allowNull: false,
     },
-     email: {
-      type: DataTypes.STRING,
+
+    name: {
+      type: DataTypes.STRING(150),
+      allowNull: false,
+      validate: { notEmpty: true },
+    },
+
+    email: {
+      type: DataTypes.STRING(255),
       allowNull: true,
+      validate: { isEmail: true },
     },
 
     description: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT,
       allowNull: false,
+      validate: { notEmpty: true },
     },
 
     imageUrl: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(500),
       allowNull: true,
     },
 
     commerceId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       allowNull: true,
       references: {
-        model: 'commerces',
-        key: 'commerceId',
+        model: "commerces",
+        key: "commerceId",
       },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
     },
-   branchTrackId: {
-  type: DataTypes.INTEGER.UNSIGNED,
-  allowNull: true,
-  references: {
-    model: 'branchTracks',
-    key: 'branchTrackId',
-  },
-  onUpdate: 'CASCADE',
-  onDelete: 'SET NULL',
-},
 
+    branchTrackId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "branch_tracks",
+        key: "branchTrackId",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
   },
   {
-    tableName: 'feedBackTracks',
+    tableName: "feedback_tracks",
     timestamps: true,
+    underscored: false,
   }
 );
 

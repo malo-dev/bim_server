@@ -5,42 +5,43 @@ const Bonus = sequelize.define(
   "Bonus",
   {
     bonusId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
+      allowNull: false,
     },
 
     bonusAccount: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
 
-    id: {
+    userId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
-  
- 
+      allowNull: true, // requis pour SET NULL
       references: {
-        model: "users",
+        model: "users", // nom exact de la table
         key: "id",
       },
-
-       onUpdate: 'CASCADE',
-  onDelete: 'SET NULL',
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
     },
 
     companyId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: "companies",
+        model: "companies", // nom exact de la table
         key: "companyId",
       },
+      onUpdate: "CASCADE",
+      onDelete: "RESTRICT",
     },
   },
   {
     tableName: "bonus",
     timestamps: true,
+    underscored: false,
   }
 );
 
