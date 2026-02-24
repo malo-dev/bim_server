@@ -1,4 +1,4 @@
-import { Category, Currency, Product, ProductSold } from '../models/index.js';
+import { Category, Currency, Product, ProductSold,Company} from '../models/index.js';
 import { getDateRangeByPeriod } from '../utils/getDateRangeByPeriod.util.js';
 import { Op } from 'sequelize';
 import path from 'path';
@@ -15,6 +15,7 @@ export const getAllProducts = async (req, res) => {
       pageSize = 20,
       commerceId,
       branchTrackId,
+      companyId
     } = req.query;
 
     const isPaginate = paginate.toLowerCase() === 'true';
@@ -23,7 +24,9 @@ export const getAllProducts = async (req, res) => {
     const offset = (currentPage - 1) * limit;
 
      const whereClause = {};
-
+    if (companyId) {
+   whereClause.companyId = companyId
+}
   
     if (commerceId) {
       whereClause.commerceId = commerceId;
@@ -143,48 +146,73 @@ export const getProductById = async (req, res) => {
 
 export const createProduct = async (req, res) => {
   try {
-    const {
-      name,
-      price,
-      description,
-      qty,
-      currencyId,
-      expiredAt,
-      commerceId,
-      branchTrackId,
-    } = req.body;
+    const products = req.body; 
 
-    if (!name || !price || !commerceId) {
+    
+    if (!Array.isArray(products) || products.length === 0) {
       return res.status(400).json({
-        message: 'Le nom, le prix et le commerceId sont obligatoires',
+        message: "Vous devez envoyer un tableau de produits",
       });
     }
 
-    const imageUrl = req.file ? `/images/${req.file.filename}` : null;
 
-    const product = await Product.create({
-      name,
-      price,
-      description,
-      qty,
-      currencyId,
-      expiredAt,
-      commerceId,
-      branchTrackId: branchTrackId || null,
-      imageUrl,
+    for (const product of products) {
+      if (!product.name || !product.price || !product.companyId) {
+        return res.status(400).json({
+          message: "Chaque produit doit avoir un name, price et companyId",
+        });
+      }
+    }
+
+     const companyIds = [...new Set(products.map(p => p.companyId))];
+    const existingCompanies = await Company.findAll({
+      where: { companyId: companyIds },
+      attributes: ["companyId"]
     });
 
-    res.status(201).json({
-      message: 'Produit créé avec succès',
-      data: product,
+    if (existingCompanies.length !== companyIds.length) {
+      const existingIds = existingCompanies.map(c => c.companyId);
+      const invalidIds = companyIds.filter(id => !existingIds.includes(id));
+      return res.status(400).json({
+        message: "Certains companyId n'existent pas",
+        invalidIds
+      });
+    }
+
+
+    // Optionnel : vérifier les doublons (ex: nom de produit unique par entreprise)
+    const existingProducts = await Product.findAll({
+      where: {
+        name: products.map(p => p.name),
+        companyId: products.map(p => p.companyId)
+      },
+      attributes: ["name", "companyId"],
     });
+
+    if (existingProducts.length > 0) {
+      return res.status(400).json({
+        message: "Certains produits existent déjà",
+        existingProducts
+      });
+    }
+
+    // Création en bulk
+    const createdProducts = await Product.bulkCreate(products, { validate: true });
+
+    return res.status(201).json({
+      message: "Produits créés avec succès",
+      count: createdProducts.length,
+      data: createdProducts,
+    });
+
   } catch (error) {
-    res.status(500).json({
-      message: 'Erreur lors de la création du produit',
+    return res.status(500).json({
+      message: "Erreur lors de la création des produits",
       error: error.message,
     });
   }
 };
+
 
 export const updateProduct = async (req, res) => {
   try {

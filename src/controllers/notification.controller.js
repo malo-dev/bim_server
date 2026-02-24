@@ -38,11 +38,11 @@ export const getAllNotifications = async (req, res) => {
     }
     const id = userId
 
-       if (commerceId && id ) {
+       if (id ) {
       whereClause[Op.and] = [
         {
           [Op.or]: [
-            { id},
+            {userId:id},
             
           ],
         },

@@ -39,7 +39,7 @@ const BusinessCategory = sequelize.define(
     indexes: [
       {
         unique: true,
-        fields: ["name"], // ici on met l'unicité via index
+        fields: ["name"], 
       },
     ],
   }

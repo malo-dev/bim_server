@@ -9,6 +9,11 @@ const User = sequelize.define(
       primaryKey: true,
       autoIncrement: true,
     },
+
+    randomly: {
+      type: DataTypes.STRING,
+       allowNull:  true,
+    },
     username: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -63,11 +68,11 @@ const User = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
-    token: {               // harmonisé
+    token: {             
       type: DataTypes.STRING,
       allowNull: true,
     },
-    tokenAbonnement: {     // harmonisé
+    TokenAbonemment: {    
       type: DataTypes.STRING,
       allowNull: true,
     },
@@ -76,9 +81,42 @@ const User = sequelize.define(
       allowNull: true,
     },
     soldNumber: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
+  type: DataTypes.DECIMAL(10, 2), // 10 chiffres max, 2 décimales
+  allowNull: true,
+  validate: {
+    max: 5000,
+  },
+},
+    maxRetraitParJour: {
+  type: DataTypes.INTEGER,
+  allowNull: false,
+  defaultValue: 3,
+  validate: {
+    min: 1,
+  },
+  comment: 'Nombre maximum de retraits autorisés par jour',
+},
+
+maxRechargeParJour: {
+  type: DataTypes.INTEGER,
+  allowNull: false,
+  defaultValue: 10,
+  validate: {
+    min: 1,
+  },
+  comment: 'Nombre maximum de recharges autorisées par jour',
+},
+
+maxTransfertParJour: {
+  type: DataTypes.INTEGER,
+  allowNull: false,
+  defaultValue: 5,
+  validate: {
+    min: 1,
+  },
+  comment: 'Nombre maximum de transferts autorisés par jour',
+},
+
     nRecharge: {
       type: DataTypes.INTEGER,
       defaultValue: 0,
@@ -127,6 +165,7 @@ const User = sequelize.define(
   {
     tableName: 'users',
     timestamps: true,
+
     indexes: [
       {
         unique: true,

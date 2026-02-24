@@ -7,9 +7,9 @@ import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import path from 'path';
 import fs from 'fs';
-import { generateNewLoginAlertEmailTemplate, generateOtpEmailTemplate, generateOtpEmailTemplateActivated } from '../utils/templateMails.util.js';
+import { generateNewLoginAlertEmailTemplate,generateTransactionPasswordEmailTemplate, generateOtpEmailTemplate, generateOtpEmailTemplateActivated } from '../utils/templateMails.util.js';
 import { generateAccountNumber,generateAccountNumberAgent} from '../utils/generateAccountNumber.util.js';
-
+import { generatePassword6Digits,getFormattedDateTime} from '../utils/calculFrais.util.js';
 const generateOtp = () => {
   return Math.floor(100000 + Math.random() * 900000).toString(); // OTP 6 chiffres
 };
@@ -330,7 +330,11 @@ const getAllUsers = async (req, res) => {
     const currentPage = parseInt(page, 10);
     const offset = (currentPage - 1) * limit;
 
-    const whereClause = {};
+     const whereClause = {
+      email: {
+        [Op.ne]: 'bimbank@bimresau.com', // 👈 exclure cet utilisateur
+      },
+    };
 
   
     if (commerceId) {
@@ -366,6 +370,18 @@ const getAllUsers = async (req, res) => {
   
     const queryOptions = {
       where: whereClause,
+        attributes: {
+    exclude: [
+      'password',
+      'otp',
+      'otpExpires',
+      'resetPasswordToken',
+      'resetPasswordExpiresAt',
+      'refreshToken',
+      'token',
+      'TokenAbonemment',
+    ],
+  },
       include: [{ model: Role, as: 'role' },{model : BranchTrack, as : 'branchTrack'},{model:Commerce,as:'commerce'}],
       order: [['createdAt', 'ASC']],
     };
@@ -417,6 +433,8 @@ const getUserById = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+
 const updateUserProfile = async (req, res) => {
   const { id } = req.params;
   const { username, email, keyRole, isActive, imageUrl } = req.body;
@@ -775,19 +793,37 @@ const verifyOtp = async (req, res) => {
       });
     }
 
+    const pwd = generatePassword6Digits()
+  const hashedPassword = await bcrypt.hash(pwd, 10);
+     const transporter = nodemailer.createTransport({
+      host: 'mail.bimreseau.com',
+      port: 465,
+      secure: true,
+      auth: {
+        user: 'noreply@bimreseau.com',
+        pass: process.env.EMAIL_PASSWORD,
+      },
+     });
+    
+const dateTime = getFormattedDateTime();
+
+    
+    await transporter.sendMail({
+      from: 'noreply@bimreseau.com',
+      to: user.email,
+      subject: `Votre mot de passe de transaction BIM NEXT 🔐 — Créé le ${dateTime}`,
+      html: generateTransactionPasswordEmailTemplate(user.username,pwd),
+    });
+
  
-    // if (user.isActive) {
-    //   return res.status(409).json({
-    //     message: "ACCOUNT_ALREADY_ACTIVE",
-    //     error: "Ce compte est déjà activé"
-    //   });
-    // }
+
 
    
     await user.update({
       isActive: true,
       otp: null,
-      otpExpires: null
+      otpExpires: null,
+      randomly : hashedPassword,
     });
     return res.status(200).json({
       message: "OTP_VERIFIED_SUCCESS",
@@ -844,6 +880,38 @@ const storeExpoPushToken = async (req, res) => {
     });
   }
 };
+
+
+const veryfUserPass = async (req, res) => {
+  const { userId, password } = req.body;
+  try {
+    const user = await User.findByPk(userId)
+    if (!user) {
+      return res.status(404).json({ message: 'Utilisateur introuvable' });
+    } 
+
+    const isPasswordValid = await bcrypt.compare(password, user.randomly);
+  if (!isPasswordValid) {
+        return res.status(401).json({ message: 'Invalid password' });
+      }
+
+
+  if (!user.isActive) {
+          return res.status(409).json({
+            message: 'This process cannot be completed because your account is not yet activated.',
+          });
+        }
+
+
+  return res.status(200).json({
+          message: 'Login successful',
+          
+        });
+
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
 export {
   register,
   login,
@@ -861,5 +929,6 @@ export {
   verifyOtp,
   logOut,
   storeExpoPushToken,
-  createAgent
+  createAgent,
+  veryfUserPass
 };

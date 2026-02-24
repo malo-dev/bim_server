@@ -4,7 +4,7 @@ import nodemailer from 'nodemailer';
 import { Op } from 'sequelize';
 import path from 'path';
 import fs from 'fs';
-import { generateSupportReceivedEmailTemplate } from '../utils/templateMails.util.js';
+import { generateProjectReceivedEmailTemplateValue  } from '../utils/templateMails.util.js';
 
 
 export const getAllSupportTracks = async (req, res) => {
@@ -131,16 +131,15 @@ export const getSupportTrackById = async (req, res) => {
 
 export const createSupportTrack = async (req, res) => {
   try {
-    
-
     if (!req.body.email || !req.body.description || !req.body.id) {
       return res.status(400).json({
-        message: 'Veuillez remolir tous les chamos sont obligatoires',
+        message: 'Veuillez remplir tous les champs, ils sont obligatoires',
       });
     }
 
     const imageUrl = req.file ? `/images/${req.file.filename}` : null;
-  const transporter = nodemailer.createTransport({
+
+    const transporter = nodemailer.createTransport({
       host: 'mail.bimreseau.com',
       port: 465,
       secure: true,
@@ -151,41 +150,52 @@ export const createSupportTrack = async (req, res) => {
       },
     });
 
-    
+
+
+
+    try {
     await transporter.sendMail({
       from: 'noreply@bimreseau.com',
       to: req.body.email,
       subject: "Ticket support reçu - BIM NEXT",
-      html: generateSupportReceivedEmailTemplate(
-  req.body.sujet,
-  req.body.description,
-  new Date().toLocaleString()
-)
+      html: generateProjectReceivedEmailTemplateValue(
+        req.body.sujet,
+        req.body.description,
+        new Date().toLocaleString()
+      ),
     });
+} catch (mailError) {
+  console.error("Erreur envoi mail :", mailError.message);
+  return res.status(400).json({
+    message: `Impossible d'envoyer le mail à ${req.body.email}. Vérifiez l'adresse.`,
+    error: mailError.message,
+  });
+}
 
-    await SupportTrack.create({
-      sujet:req.body.sujet,
-      email : req.body.email,
-      description : req.body.description,
-      id : req.body.id,
-      commerceId : req.body.commerceId || null,
-      branchTrackId: req.body.branchTrackId || null,
+
+    const support = await SupportTrack.create({
+      sujet: req.body.sujet,
+      email: req.body.email,
+      description: req.body.description,
+      id: Number(req.body.id),
+      commerceId: req.body.commerceId ? Number(req.body.commerceId) : null,
+      branchTrackId: req.body.branchTrackId ? Number(req.body.branchTrackId) : null,
       imageUrl,
     });
 
-
-
     res.status(201).json({
       message: 'Message créé avec succès',
-      data: SupportTrack,
+      data: support,
     });
   } catch (error) {
+    console.error(error);
     res.status(500).json({
-      message: 'Erreur lors de la création ',
+      message: 'Erreur lors de la création',
       error: error.message,
     });
   }
 };
+
 
 export const updateSupportTrack = async (req, res) => {
   try {

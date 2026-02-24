@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import User from "../src/models/User.model.js";
 import dotenv from "dotenv";
-import {History,Notification} from '../src/models/index.js'
+import {History} from '../src/models/index.js'
 dotenv.config();
 
 const getActionFromMethod = (method) => {
@@ -51,14 +51,14 @@ const authMiddleware = async (req, res, next) => {
         action: isSuccess ? `${label} ✅` : `${label} ❌`,
       });
 
-      await Notification.create({
-        title: isSuccess ? "Opération réussie" : "Erreur",
-        message: isSuccess
-          ? `${label} effectuée avec succès.`
-          : `Une erreur est survenue lors de ${label.toLowerCase()}.`,
-        type: isSuccess ? "SUCCESS" : "ERREUR",
-        id: req.user.id,
-      });
+      // await Notification.create({
+      //   title: isSuccess ? "Opération réussie" : "Erreur",
+      //   message: isSuccess
+      //     ? `${label} effectuée avec succès.`
+      //     : `Une erreur est survenue lors de ${label.toLowerCase()}.`,
+      //   type: isSuccess ? "SUCCESS" : "ERREUR",
+      //   id: req.user.id,
+      // });
 
     } catch (err) {
       console.error("Log error:", err.message);

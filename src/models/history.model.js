@@ -47,7 +47,7 @@ const History = sequelize.define(
 
     userId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: "users",
         key: "id",

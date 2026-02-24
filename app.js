@@ -21,6 +21,10 @@ import feedbackRoutes from './src/routers/feedback.routes.js';
 import  historyRoutes from './src/routers/history.routes.js'
 import TransactionRoutes from './src/routers/transaction.routes.js'
 import SupportRoutes from './src/routers/supportTrack.routes.js'
+import BusinessRoutes from './src/routers/businessCategory.routes.js';
+import CompanyRoutes from './src/routers/company.routes.js'
+import NotesRoutes from './src/routers/notes.routes.js'
+import BonusRoutes from './src/routers/bonusTrack.routes.js'
 import path from 'path';
 const app = express();
 dotenv.config();
@@ -59,6 +63,13 @@ app.use('/api/v1/redev_track', redevtrackRoutes);
 app.use('/api/v1/feedback_track', feedbackRoutes);
 app.use('/api/v1/support_track', SupportRoutes);
 app.use('/api/v1/notification_track', notificationRoutes);
-app.use('/api/v1/tsx',  TransactionRoutes);
+app.use('/api/v1/tsx', TransactionRoutes);
+app.use('/api/v1/sector', BusinessRoutes);
+app.use('/api/v1/company', CompanyRoutes);
+app.use('/api/v1/bonus', BonusRoutes);
+app.use('/api/v1/notes',NotesRoutes)
+
+
+
 
 export default app;

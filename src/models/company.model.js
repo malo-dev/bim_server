@@ -49,6 +49,18 @@ const Company = sequelize.define(
       onDelete: "SET NULL",
     },
 
+      businessId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "businessCategories",
+        key: "businessId",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
+
+
     imageUrl: {
       type: DataTypes.STRING(500),
       allowNull: true,

@@ -27,6 +27,16 @@ const TransactionPaiement = sequelize.define(
       allowNull: false,
       validate: { notEmpty: true },
     },
+     companyId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "companies",
+        key: "companyId",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
 
     productId: {
       type: DataTypes.INTEGER,

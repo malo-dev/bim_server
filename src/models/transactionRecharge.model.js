@@ -14,8 +14,11 @@ const TransactionRecharge = sequelize.define(
     amount: {
       type: DataTypes.FLOAT,
       allowNull: false,
-      validate: { min: 0 },
-      comment: 'Montant de la recharge',
+      validate: {
+        min: 1,   
+        max: 1000,
+      },
+      comment: 'Montant du retrait (min: 5$, max: 1000$)',
     },
 
     telephone: {

@@ -9,9 +9,14 @@ import {
   checkRechargeStatus,
   createRecharge,
   createTransfert,
-  recharge,
-  createRetrait
+  createRetrait,
+   getTransactionsPaiement,
+  getTransactionPaiementById,
+  updateTransactionPaiement,
+  deleteTransactionPaiement,
 } from '../controllers/transaction.controller.js';
+
+import {recharge} from '../controllers/recharge.controller.js'
 import authMiddleware from '../../middlewares/auth.middleware.js';
 
 const router = express.Router();
@@ -28,4 +33,8 @@ router.post('/createrecharge', authMiddleware, createRecharge);
 router.post('/recharge', authMiddleware, recharge );
 router.post('/retrait', authMiddleware,  createRetrait );
 router.get('/recharge/status', authMiddleware, checkRechargeStatus);
+router.get("/transactions", getTransactionsPaiement);
+router.get("/transactions/:id", getTransactionPaiementById);
+router.put("/transactions/:id", updateTransactionPaiement);
+router.delete("/transactions/:id", deleteTransactionPaiement);
 export default router;

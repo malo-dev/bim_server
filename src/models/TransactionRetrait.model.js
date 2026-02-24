@@ -14,9 +14,20 @@ const TransactionRetrait = sequelize.define(
     amount: {
       type: DataTypes.FLOAT,
       allowNull: false,
-      validate: { min: 0 },
-      comment: 'Montant du retrait',
+      validate: {
+        min: 5,   
+        max: 1000,
+      },
+      comment: 'Montant du retrait (min: 5$, max: 1000$)',
     },
+
+    maxRetraitParJuur: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue : 3
+    },
+
+    
 
     targetId: {
       type: DataTypes.INTEGER,

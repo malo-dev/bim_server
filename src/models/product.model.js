@@ -18,16 +18,34 @@ const Product = sequelize.define(
       validate: { notEmpty: true },
     },
 
+
+     Warning: {
+      type: DataTypes.STRING(400),
+      allowNull: true,
+      validate: { notEmpty: true },
+    },
+
+
     price: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
       validate: { min: 0 },
     },
 
+     reduction: {
+      type: DataTypes.INTEGER,
+      allowNull: 'true',
+    },
+
+
     description: {
       type: DataTypes.TEXT,
       allowNull: false,
       validate: { notEmpty: true },
+    },
+    unityMesure: {
+      type: DataTypes.TEXT,
+      allowNull: true
     },
 
     TVA: {
@@ -92,6 +110,18 @@ const Product = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "SET NULL",
     },
+
+     companyId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "companies",
+        key: "companyId",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
+
 
     branchTrackId: {
       type: DataTypes.INTEGER,
