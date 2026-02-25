@@ -216,7 +216,7 @@ export const updateCompany = async (req, res) => {
       return res.status(404).json({ message: 'Company not found' });
     }
 
-    let logo = company.logo;
+    
     let imageUrl = company.imageUrl;
 
     // 🔁 UPDATE LOGO
@@ -232,7 +232,7 @@ export const updateCompany = async (req, res) => {
         }
       }
 
-      logo = `/images/${req.files.logo[0].filename}`;
+     
     }
 
     // 🔁 UPDATE IMAGE
@@ -253,7 +253,6 @@ export const updateCompany = async (req, res) => {
 
     await company.update({
       ...req.body,
-      logo,
       imageUrl,
     });
 
