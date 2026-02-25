@@ -70,6 +70,13 @@ app.use('/api/v1/bonus', BonusRoutes);
 app.use('/api/v1/notes',NotesRoutes)
 
 
-
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: '👋 Hello from BIM NEXT API — Server is running !',
+    version: 'v1.0.0',
+    status:  'online',
+    docs:    '/api/v1',
+  });
+});
 
 export default app;

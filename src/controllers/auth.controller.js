@@ -332,7 +332,7 @@ const getAllUsers = async (req, res) => {
 
      const whereClause = {
       email: {
-        [Op.ne]: 'bimbank@bimresau.com', // 👈 exclure cet utilisateur
+        [Op.ne]: 'bimbank@bimreseau.com', // 👈 exclure cet utilisateur
       },
     };
 
