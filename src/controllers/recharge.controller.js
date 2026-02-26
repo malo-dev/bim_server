@@ -1,6 +1,6 @@
 /* eslint-disable no-undef */
 import jwt from 'jsonwebtoken';
-import { User, Notification } from '../models/index.js';
+import { User, Notification,Transaction,History} from '../models/index.js';
 import { generateSupportReceivedEmailTemplateRecharge } from '../utils/templateMails.util.js';
 import nodemailer from 'nodemailer';
 import sequelize from '../config/database.js';
