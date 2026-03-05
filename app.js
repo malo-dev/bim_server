@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import morgan from 'morgan';
 import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import authRoutes from './src/routers/auth.routes.js';
 import roleRoutes from './src/routers/role.routes.js';
 import productRoutes from './src/routers/product.router.js';
@@ -28,23 +29,67 @@ import BonusRoutes from './src/routers/bonusTrack.routes.js'
 import path from 'path';
 const app = express();
 dotenv.config();
-app.use(express.json());
- app.use(express.urlencoded({
-  extended: true,
-  })
- );
-app.use(morgan('dev'));
-app.use(helmet());
-app.use(cors({ origin: '*' }));
-app.use((req, res, next) => {
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  next();
+
+// ── Rate limiters ──────────────────────────────────────────
+// Limite globale : 200 requêtes / 15 min par IP
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Trop de requêtes. Réessayez dans 15 minutes.' },
 });
+
+// Limite stricte sur les routes sensibles : 10 requêtes / 15 min par IP
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Trop de tentatives. Réessayez dans 15 minutes.' },
+});
+
+// ── Middlewares ────────────────────────────────────────────
+app.use(globalLimiter);
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(morgan('dev'));
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    contentSecurityPolicy: false,
+  })
+);
+const ALLOWED_ORIGINS = [
+  'http://localhost:5000',
+  'http://localhost:8083',
+  'http://192.168.1.39:5000',
+  'http://192.168.1.39:8083',
+  'https://serverbimnext.masmara-dimajelo.org',
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Autoriser les requêtes sans origin (apps mobiles, Postman, etc.)
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, true); // garder permissif pour les tests
+    }
+  },
+  credentials: true,
+}));
+app.disable('x-powered-by');
 app.use(
   '/images',
   // eslint-disable-next-line no-undef
   express.static(path.join(process.cwd(), 'public/images'))
 );
+
+// Rate limiter strict sur les routes auth sensibles
+app.use('/api/v1/auth/login', authLimiter);
+app.use('/api/v1/auth/reset-password', authLimiter);
+app.use('/api/v1/auth/ask-password-reset', authLimiter);
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/role', roleRoutes);

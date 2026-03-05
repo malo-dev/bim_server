@@ -1,4 +1,4 @@
-import Expo from 'expo-server-sdk';
+import { Expo } from 'expo-server-sdk';
 
 // Crée une instance de Expo
 let expo = new Expo();
