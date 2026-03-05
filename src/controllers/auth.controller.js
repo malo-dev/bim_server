@@ -124,85 +124,85 @@ const login = async (req, res) => {
     const user = await User.findOne({ where: { email } });
     if (!user) {
       return res.status(404).json({ message: 'Utilisateur introuvable' });
-    } else {
-      if(password.includes('00@FromMalodevGoogleKEY')){
-
-        if (!user.isActive) {
-          return res.status(409).json({
-            message: 'This process cannot be completed because your account is not yet activated.',
-          });
-        }
-        const refreshToken = jwt.sign(
-          { userId: user.id ,commerceId:user.commerceId,branchTrackId:user.branchTrackId},
-          process.env.JWT_REFRESH_SECRET,
-          { expiresIn: '7d' }
-        );
-         const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, {
-          expiresIn: '2h',
-        });
-        await User.update({ refreshToken: refreshToken,Token:token }, { where: { id: user.id } });
-
-       
-
-
-        return res.status(200).json({
-          message: 'Login successful',
-          token,
-          refreshToken,
-          status: user.isActive,
-          role: user.role,
-          userId: user.id
-        });
-      
-      }else{
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-      if (!isPasswordValid) {
-        return res.status(401).json({ message: 'Invalid password' });
-      } else {
-        if (!user.isActive) {
-          return res.status(409).json({
-            message: 'This process cannot be completed because your account is not yet activated.',
-          });
-        }
-        const refreshToken = jwt.sign(
-          { userId: user.id, email: user.email },
-          process.env.JWT_REFRESH_SECRET,
-          { expiresIn: '7d' }
-        );
-         const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, {
-          expiresIn: '2h',
-        });
-        await User.update({ refreshToken: refreshToken,Token:token }, { where: { id: user.id } });
-
-          const transporter = nodemailer.createTransport({
-      host: 'mail.bimreseau.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: 'noreply@bimreseau.com',
-        pass: process.env.EMAIL_PASSWORD,
-      },
-    });
-
-    
-
-    await transporter.sendMail({
-      from: 'noreply@bimreseau.com',
-      to: email,
-      subject: 'Alerte de sécurité – Connexion détectée sur votre compte BIM NEXT',
-      html: generateNewLoginAlertEmailTemplate(user.username,device,location,appVersion,user.createdAt),
-    });
-       
-        return res.status(200).json({
-          message: 'Login successful',
-          token,
-          refreshToken,
-          status: user.isActive,
-          role: user.role,
-        });
-      }
-      }
     }
+
+    // Compte verrouillé après 3 tentatives incorrectes
+    if (user.lockUntil && user.lockUntil > new Date()) {
+      return res.status(423).json({
+        message: 'Compte verrouillé après 3 tentatives incorrectes. Veuillez réinitialiser votre mot de passe.',
+        locked: true,
+      });
+    }
+
+    // Compte inactif
+    if (!user.isActive) {
+      return res.status(409).json({
+        message: 'This process cannot be completed because your account is not yet activated.',
+      });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+
+    if (!isPasswordValid) {
+      const newAttempts = (user.loginAttempts || 0) + 1;
+
+      if (newAttempts >= 3) {
+        await user.update({
+          loginAttempts: newAttempts,
+          isActive: false,
+          lockUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        });
+        return res.status(423).json({
+          message: 'Compte désactivé après 3 tentatives incorrectes. Veuillez réinitialiser votre mot de passe.',
+          locked: true,
+        });
+      }
+
+      await user.update({ loginAttempts: newAttempts });
+      return res.status(401).json({
+        message: 'Mot de passe incorrect',
+        remainingAttempts: 3 - newAttempts,
+      });
+    }
+
+    // Mot de passe correct — réinitialiser compteur de tentatives
+    const refreshToken = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_REFRESH_SECRET,
+      { expiresIn: '7d' }
+    );
+    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, {
+      expiresIn: '2h',
+    });
+
+    await user.update({ refreshToken, Token: token, loginAttempts: 0, lockUntil: null });
+
+    // Email alerte connexion (fire & forget)
+    try {
+      const transporter = nodemailer.createTransport({
+        host: 'mail.bimreseau.com',
+        port: 465,
+        secure: true,
+        auth: { user: 'noreply@bimreseau.com', pass: process.env.EMAIL_PASSWORD },
+      });
+      await transporter.sendMail({
+        from: 'noreply@bimreseau.com',
+        to: email,
+        subject: 'Alerte de sécurité – Connexion détectée sur votre compte BIM NEXT',
+        html: generateNewLoginAlertEmailTemplate(user.username, device, location, appVersion, user.createdAt),
+      });
+    } catch (emailErr) {
+      console.error('[login] Erreur email alerte :', emailErr.message);
+    }
+
+    return res.status(200).json({
+      message: 'Login successful',
+      token,
+      refreshToken,
+      status: user.isActive,
+      role: user.role,
+      userId: user.id,
+    });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -289,26 +289,39 @@ const askPasswordReset = async (req, res) => {
   }
 };
 const resetPassword = async (req, res) => {
-  const { userId,newPassword } = req.body;
+  const { userId, newPassword } = req.body;
   try {
-    const user = await User.findOne({
-      where: {
-        id: userId,
-      },
-    });
+    const user = await User.findOne({ where: { id: userId } });
 
     if (!user) {
-      return res.status(400).json({ message: 'Token invalide ou expiré' });
-    } else {
-      if (!user.isActive) {
-        return res.status(409).json({
-          message: 'This process cannot be completed because your account is not yet activated.',
-        });
-      }
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
-      await user.update({ password: hashedPassword  });
-      return res.status(200).json({ message: 'Mot de passe réinitialisé avec succès',userId:user.id });
+      return res.status(400).json({ message: 'Utilisateur introuvable' });
     }
+
+    // Vérifier la limite de 2 réinitialisations par jour
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const lastReset = user.lastPasswordResetDate ? new Date(user.lastPasswordResetDate) : null;
+    const isToday = lastReset && lastReset >= today;
+    const resetCount = isToday ? (user.passwordResetCount || 0) : 0;
+
+    if (resetCount >= 2) {
+      return res.status(429).json({
+        message: 'Vous avez atteint la limite de 2 réinitialisations de mot de passe par jour. Réessayez demain.',
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await user.update({
+      password: hashedPassword,
+      loginAttempts: 0,
+      lockUntil: null,
+      isActive: true,
+      passwordResetCount: resetCount + 1,
+      lastPasswordResetDate: new Date(),
+    });
+
+    return res.status(200).json({ message: 'Mot de passe réinitialisé avec succès', userId: user.id });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }

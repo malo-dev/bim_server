@@ -161,6 +161,30 @@ maxTransfertParJour: {
       type: DataTypes.STRING,
       allowNull: true,
     },
+
+    // Sécurité login
+    loginAttempts: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+      comment: 'Nombre de tentatives de connexion échouées consécutives',
+    },
+    lockUntil: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Compte verrouillé jusqu\'à cette date',
+    },
+
+    // Limite réinitialisation mot de passe
+    passwordResetCount: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+      comment: 'Nombre de réinitialisations aujourd\'hui',
+    },
+    lastPasswordResetDate: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Date de la dernière réinitialisation de mot de passe',
+    },
   },
   {
     tableName: 'users',

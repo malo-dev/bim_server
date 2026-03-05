@@ -9,6 +9,8 @@ import sequelize from '../config/database.js';
 import nodemailer from 'nodemailer';
 import jwt from "jsonwebtoken";
 import { generateReferenceRecharge } from '../utils/generateReferenceSecond.js';
+import { sendPushNotification } from '../services/pushNotification.service.js';
+import { emitToUser } from '../services/socket.service.js';
 /* ================= CONFIG RETRAIT ================= */
 
 const RETRAIT_CONFIG = {
@@ -339,6 +341,26 @@ export const createRetrait = async (req, res) => {
 
     await t.commit();
 
+    // ── Push notifications + Socket temps réel ──
+    const pushPayloadSender = {
+      title: "Retrait réussi ✅",
+      message: `Votre retrait de ${retraitAmount}$ a été effectué. Total débité: ${totalDebit}$.`,
+    };
+    const pushPayloadAgent = {
+      title: "Nouveau retrait 💰",
+      message: `Retrait de ${retraitAmount}$ + frais agent ${fraisAgent}$ crédités.`,
+    };
+
+    emitToUser(userSender.id, "notification", { ...pushPayloadSender, type: "SUCCESS" });
+    emitToUser(userAgent.id, "notification", { ...pushPayloadAgent, type: "INFO" });
+
+    if (userSender.expoPushToken) {
+      sendPushNotification(userSender.expoPushToken, pushPayloadSender.title, pushPayloadSender.message).catch(() => {});
+    }
+    if (userAgent.expoPushToken) {
+      sendPushNotification(userAgent.expoPushToken, pushPayloadAgent.title, pushPayloadAgent.message).catch(() => {});
+    }
+
     return res.status(201).json({
       message: "Retrait effectué avec succès",
       transaction: mainTransaction,
@@ -588,6 +610,26 @@ export const createTransfert = async (req, res) => {
       senderNewSold:    senderSold - transferAmount,
       receiverNewSold,
     });
+
+    /* ── Push notifications + Socket temps réel ── */
+    const pushSender = {
+      title: "Transfert envoyé ✅",
+      message: `Vous avez transféré ${transferAmount} EC à ${receiver.username}.`,
+    };
+    const pushReceiver = {
+      title: "Fonds reçus 💰",
+      message: `Vous avez reçu ${finalReceiverAmount} EC de ${sender.username}.`,
+    };
+
+    emitToUser(sender.id, "notification", { ...pushSender, type: "SUCCESS" });
+    emitToUser(receiver.id, "notification", { ...pushReceiver, type: "SUCCESS" });
+
+    if (sender.expoPushToken) {
+      sendPushNotification(sender.expoPushToken, pushSender.title, pushSender.message).catch(() => {});
+    }
+    if (receiver.expoPushToken) {
+      sendPushNotification(receiver.expoPushToken, pushReceiver.title, pushReceiver.message).catch(() => {});
+    }
 
     /* ── 14. Emails fire & forget (après commit + réponse) ── */
     try {
@@ -895,13 +937,6 @@ export const checkRechargeStatus = async (req, res) => {
 };
 
 
-
-
-
-
-
-
-
 export const createPaiement = async (req, res) => {
   const t = await sequelize.transaction();
 
@@ -1079,6 +1114,26 @@ export const createPaiement = async (req, res) => {
       senderNewSold:    newSenderSold,
     });
 
+    /* ── Push notifications + Socket temps réel ── */
+    const pushPaiementSender = {
+      title: "Paiement réussi ✅",
+      message: `Votre paiement de ${paiementAmount} EC pour la commande ${orderNumber} a été effectué.`,
+    };
+    const pushPaiementOwner = {
+      title: "Nouvelle commande payée 🛒",
+      message: `Commande ${orderNumber} — ${paiementAmount} EC reçus.`,
+    };
+
+    emitToUser(sender.id, "notification", { ...pushPaiementSender, type: "SUCCESS" });
+    emitToUser(ownerItem.id, "notification", { ...pushPaiementOwner, type: "INFO" });
+
+    if (sender.expoPushToken) {
+      sendPushNotification(sender.expoPushToken, pushPaiementSender.title, pushPaiementSender.message).catch(() => {});
+    }
+    if (ownerItem.expoPushToken) {
+      sendPushNotification(ownerItem.expoPushToken, pushPaiementOwner.title, pushPaiementOwner.message).catch(() => {});
+    }
+
     /* ── 12. Email fire & forget (après commit + réponse)
             Une lenteur SMTP ne bloque plus jamais le client ── */
     try {
@@ -1165,8 +1220,6 @@ export const createPaiement = async (req, res) => {
     }
   }
 };
-
-
 
 export const createTransaction = async (req, res) => {
   try {
