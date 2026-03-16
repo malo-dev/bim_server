@@ -1021,6 +1021,28 @@ const deleteAccount = async (req, res) => {
   }
 };
 
+export const updateSoldNumber = async (req, res) => {
+  const { id } = req.params;
+  const { soldNumber } = req.body;
+  try {
+    if (soldNumber === undefined || soldNumber === null) {
+      return res.status(400).json({ message: 'soldNumber est requis' });
+    }
+    const value = parseFloat(soldNumber);
+    if (isNaN(value) || value < 0 || value > 5000) {
+      return res.status(400).json({ message: 'soldNumber invalide (0 - 5000)' });
+    }
+    const user = await User.findByPk(id);
+    if (!user) {
+      return res.status(404).json({ message: 'Utilisateur introuvable' });
+    }
+    await user.update({ soldNumber: value });
+    return res.status(200).json({ message: 'soldNumber mis à jour avec succès', soldNumber: value });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 export {
   register,
   login,

@@ -18,7 +18,8 @@ import {
   verifyOtp,
   storeExpoPushToken,
   createAgent,
-  veryfUserPass
+  veryfUserPass,
+  updateSoldNumber
 } from '../controllers/auth.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 import upload from '../../middlewares/upload.js';
@@ -43,5 +44,6 @@ router.post('/verify-otp', verifyOtp);
 router.post('/users/:userId/expoPushToken', storeExpoPushToken);
 router.post('/verifyPwd', veryfUserPass);
 router.delete('/account', authMiddleware, deleteAccount);
+router.put('/users/:id/sold', authMiddleware, updateSoldNumber);
 
 export default router;
