@@ -12,7 +12,7 @@ const httpServer = createServer(app);
 // Initialiser Socket.io sur le serveur HTTP
 initSocket(httpServer);
 
-sequelize.authenticate()
+sequelize.sync({alter:true})
   .then(() => {
     console.log('✅ Base de données connectée');
     httpServer.listen(PORT, () => {
