@@ -124,7 +124,7 @@ export const getNoteById = async (req, res) => {
 /* ── GET NOTES BY COMPANY ─────────────────────────────────────────────── */
 export const getNotesByCompany = async (req, res) => {
   try {
-    const { companyId } = req.params;
+    const { id: companyId } = req.params;
     const {
       productId,
       paginate = 'false',
@@ -154,25 +154,20 @@ export const getNotesByCompany = async (req, res) => {
 
     const findOptions = {
       where: whereClause,
-      order: [['createdAt', 'DESC']]
-    //   include: [
-    //     { model: User,    as: 'user',    attributes: ['id', 'username', 'email'] },
-    //     { model: Product, as: 'product', attributes: ['productId', 'name', 'price'] },
-    //   ],
+      order: [['createdAt', 'DESC']],
+      include: [
+        { model: User,    as: 'user',    attributes: ['id', 'username', 'imageUrl'] },
+        { model: Product, as: 'product', attributes: ['productId', 'name', 'price'] },
+      ],
     };
 
-    if (isPaginate) {
-      const { rows, count } = await Notes.findAndCountAll({
-        ...findOptions,
-        limit,
-        offset,
-      });
+    const allForAvg = await Notes.findAll({ where: whereClause, attributes: ['totalStars'] });
+    const avgStars  = allForAvg.length
+      ? (allForAvg.reduce((sum, n) => sum + (n.totalStars || 0), 0) / allForAvg.length).toFixed(1)
+      : 0;
 
-      // Calcul de la moyenne des étoiles
-      const allNotes     = await Notes.findAll({ where: whereClause, attributes: ['totalStars'] });
-      const avgStars     = allNotes.length
-        ? (allNotes.reduce((sum, n) => sum + (n.totalStars || 0), 0) / allNotes.length).toFixed(1)
-        : 0;
+    if (isPaginate) {
+      const { rows, count } = await Notes.findAndCountAll({ ...findOptions, limit, offset });
 
       return res.status(200).json({
         data: rows,
@@ -184,10 +179,7 @@ export const getNotesByCompany = async (req, res) => {
       });
     }
 
-    const notes    = await Notes.findAll(findOptions);
-    const avgStars = notes.length
-      ? (notes.reduce((sum, n) => sum + (n.totalStars || 0), 0) / notes.length).toFixed(1)
-      : 0;
+    const notes = await Notes.findAll(findOptions);
 
     return res.status(200).json({
       data: notes,
@@ -276,26 +268,27 @@ export const getNotesByProduct = async (req, res) => {
   }
 };
 
-/* ── CREATE NOTE ──────────────────────────────────────────────────────── */
+/* ── CREATE / UPDATE NOTE (upsert — 1 note par utilisateur par company) ── */
 export const createNote = async (req, res) => {
   try {
-    const { companyId, productId, userId, totalStars, notes, branchTrackId } = req.body;
+    const userId                                                       = req.user.id;
+    const { companyId, productId, totalStars, notes, branchTrackId } = req.body;
 
     if (!companyId) {
       return res.status(400).json({ message: 'Le champ companyId est obligatoire' });
     }
-
+    if (!totalStars && !notes) {
+      return res.status(400).json({ message: 'Fournissez au moins une note (totalStars) ou un commentaire (notes)' });
+    }
     if (totalStars !== undefined && (totalStars < 1 || totalStars > 5)) {
       return res.status(400).json({ message: 'totalStars doit être compris entre 1 et 5' });
     }
 
-    // Vérifier que la company existe
     const company = await Company.findByPk(companyId);
     if (!company) {
       return res.status(404).json({ message: 'Entreprise introuvable' });
     }
 
-    // Vérifier que le produit existe si fourni
     if (productId) {
       const product = await Product.findByPk(productId);
       if (!product) {
@@ -303,28 +296,42 @@ export const createNote = async (req, res) => {
       }
     }
 
-    const newNote = await Notes.create({
-      companyId,
-      productId:     productId     || null,
-      userId:        userId        || null,
-      branchTrackId: branchTrackId || null,
-      totalStars:    totalStars    || null,
-      notes:         notes         || null,
+    /* Upsert : si l'utilisateur a déjà noté cette company, on met à jour */
+    const existing = await Notes.findOne({ where: { userId, companyId } });
+    let noteRecord;
+    let isNew = false;
+
+    if (existing) {
+      await existing.update({
+        totalStars:    totalStars    ?? existing.totalStars,
+        notes:         notes         ?? existing.notes,
+        productId:     productId     ?? existing.productId,
+        branchTrackId: branchTrackId ?? existing.branchTrackId,
+      });
+      noteRecord = existing;
+    } else {
+      noteRecord = await Notes.create({
+        companyId,
+        userId,
+        productId:     productId     || null,
+        branchTrackId: branchTrackId || null,
+        totalStars:    totalStars    || null,
+        notes:         notes         || null,
+      });
+      isNew = true;
+    }
+
+    const result = await Notes.findByPk(noteRecord.noteId, {
+      include: [
+        { model: User,    as: 'user',    attributes: ['id', 'username', 'imageUrl'] },
+        { model: Company, as: 'company', attributes: ['companyId', 'name'] },
+        { model: Product, as: 'product', attributes: ['productId', 'name'] },
+      ],
     });
 
-    // const noteWithRelations = await Notes.findByPk(newNote.noteId, {
-    //   include: [
-    //     { model: User,    as: 'user',    attributes: ['id', 'username', 'email'] },
-    //     { model: Product, as: 'product', attributes: ['productId', 'name', 'price'] },
-    //     { model: Company, as: 'company', attributes: ['companyId', 'name'] },
-    //   ],
-      // });
-      
-        const noteWithRelations = await Notes.findByPk(newNote.noteId);
-
-    return res.status(201).json({
-      message: 'Note créée avec succès',
-      data: noteWithRelations,
+    return res.status(isNew ? 201 : 200).json({
+      message: isNew ? 'Note créée avec succès' : 'Note mise à jour avec succès',
+      data: result,
     });
   } catch (error) {
     return res.status(500).json({

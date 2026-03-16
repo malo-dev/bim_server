@@ -2,6 +2,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { User, Role ,BranchTrack, Commerce} from '../models/index.js';
+import sequelize from '../config/database.js';
 import { Op } from 'sequelize';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
@@ -925,6 +926,101 @@ const veryfUserPass = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+/* ─────────────────────────────────────────────────────────────────────────
+   Suppression de compte par l'utilisateur lui-même
+   ───────────────────────────────────────────────────────────────────────── */
+const deleteAccount = async (req, res) => {
+  try {
+    const user = req.user; // injecté par authMiddleware
+    const { password } = req.body;
+
+    /* ── 1. Vérification mot de passe ── */
+    if (!password) {
+      return res.status(400).json({ message: "Le mot de passe est requis pour supprimer le compte." });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: "Mot de passe incorrect." });
+    }
+
+    /* ── 2. Supprimer l'image de profil si elle existe ── */
+    if (user.imageUrl) {
+      try {
+        const imagePath = path.join('public', user.imageUrl.replace('/images/', 'images/'));
+        if (fs.existsSync(imagePath)) {
+          fs.unlinkSync(imagePath);
+        }
+      } catch (imgErr) {
+        console.error("[deleteAccount] Erreur suppression image :", imgErr.message);
+      }
+    }
+
+    /* ── 3. Sauvegarder infos pour l'email avant destruction ── */
+    const { email, username } = user;
+    const uid = user.id;
+
+    /* ── 4. Suppression manuelle des enregistrements liés ──
+            Les contraintes FK en DB n'ont pas ON DELETE CASCADE
+            (seulement ON UPDATE CASCADE) → on supprime dans l'ordre ── */
+    const q = (sql) => sequelize.query(sql, { replacements: { uid } });
+
+    // Tables dont la colonne FK s'appelle "id" (références à users.id)
+    await q('DELETE FROM `notifications`           WHERE `userId`  = :uid');
+    await q('DELETE FROM `histories`               WHERE `userId`  = :uid');
+    await q('DELETE FROM `UserRoles`               WHERE `userId`  = :uid');
+    await q('DELETE FROM `transactions`            WHERE `id`      = :uid');
+    await q('DELETE FROM `transactionsRetrait`     WHERE `id`      = :uid');
+    await q('DELETE FROM `transactionsTransfert`   WHERE `id`      = :uid');
+    await q('DELETE FROM `transactionsRecharge`    WHERE `id`      = :uid');
+    await q('DELETE FROM `transactions_recharge`   WHERE `userId`  = :uid');
+
+    // Supprimer l'utilisateur (les tables avec SET NULL s'auto-gèrent)
+    await user.destroy();
+
+    /* ── 5. Réponse ── */
+    res.status(200).json({ message: "Votre compte a été supprimé définitivement." });
+
+    /* ── 6. Email de confirmation (fire & forget) ── */
+    try {
+      const transporter = nodemailer.createTransport({
+        host:    'mail.bimreseau.com',
+        port:    465,
+        secure:  true,
+        auth:    { user: 'noreply@bimreseau.com', pass: process.env.EMAIL_PASSWORD },
+        pool:    true,
+        maxConnections: 3,
+      });
+
+      await transporter.sendMail({
+        from:    'noreply@bimreseau.com',
+        to:      email,
+        subject: 'Confirmation de suppression de votre compte BIM NEXT',
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+            <h2 style="color:#e74c3c;">Compte supprimé</h2>
+            <p>Bonjour <strong>${username}</strong>,</p>
+            <p>Votre compte BIM NEXT a été supprimé définitivement le
+               <strong>${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}</strong>.</p>
+            <p>Toutes vos données personnelles ont été effacées de nos systèmes.</p>
+            <p>Si vous n'êtes pas à l'origine de cette action, contactez immédiatement notre support.</p>
+            <hr/>
+            <small style="color:#999;">BIM NEXT — noreply@bimreseau.com</small>
+          </div>
+        `,
+      });
+    } catch (emailErr) {
+      console.error("[deleteAccount] Erreur email (non critique) :", emailErr.message);
+    }
+
+  } catch (error) {
+    console.error("[deleteAccount] Erreur :", error);
+    if (!res.headersSent) {
+      return res.status(500).json({ message: "Erreur serveur", error: error.message });
+    }
+  }
+};
+
 export {
   register,
   login,
@@ -936,6 +1032,7 @@ export {
   updateUserPassword,
   desactivateUser,
   deleteUser,
+  deleteAccount,
   refreshToken,
   getMe,
   createUsers,

@@ -95,7 +95,9 @@ export const getBusinessCategoryById = async (req, res) => {
       return res.status(400).json({ message: 'Invalid business category ID' });
     }
 
-    const category = await BusinessCategory.findByPk(parsedId);
+    const category = await BusinessCategory.findByPk(parsedId, {
+      include: [{ model: Company, as: 'companies' }],
+    });
 
     if (!category) {
       return res.status(404).json({ message: 'Business category not found' });

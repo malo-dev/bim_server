@@ -14,6 +14,8 @@ export const initSocket = (httpServer) => {
         'http://localhost:8083',
         'http://192.168.1.39:5000',
         'http://192.168.1.39:8083',
+         'http://10.0.10.81:8083',
+    
         'https://serverbimnext.masmara-dimajelo.org',
         '*',
       ],
