@@ -10,6 +10,7 @@ import {
   getUserById,
   updateUserPassword,
   deleteUser,
+  deleteAccount,
   refreshToken,
   createUsers,
   blockUser,
@@ -41,5 +42,6 @@ router.post('/refresh-token', refreshToken);
 router.post('/verify-otp', verifyOtp);
 router.post('/users/:userId/expoPushToken', storeExpoPushToken);
 router.post('/verifyPwd', veryfUserPass);
+router.delete('/account', authMiddleware, deleteAccount);
 
 export default router;

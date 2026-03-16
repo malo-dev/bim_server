@@ -29,7 +29,8 @@ import Order from './order.model.js';
 
 import Notes from './notes.model.js';
 
-const CASCADE = { onDelete: 'CASCADE', onUpdate: 'CASCADE' };
+const CASCADE   = { onDelete: 'CASCADE', onUpdate: 'CASCADE' };
+const SET_NULL  = { onDelete: 'SET NULL', onUpdate: 'CASCADE' };
 
 
 // ================= TRANSACTIONS =================
@@ -196,6 +197,16 @@ Notification.belongsTo(BranchTrack, { foreignKey: 'branchTrackId', ...CASCADE })
 
 
 // ================= EXPORT =================
+
+// ================= NOTES =================
+
+Notes.belongsTo(User,    { foreignKey: 'userId',    as: 'user',    ...SET_NULL });
+Notes.belongsTo(Company, { foreignKey: 'companyId', as: 'company', ...CASCADE  });
+Notes.belongsTo(Product, { foreignKey: 'productId', as: 'product', ...SET_NULL });
+
+User.hasMany(Notes,    { foreignKey: 'userId',    as: 'notes' });
+Company.hasMany(Notes, { foreignKey: 'companyId', as: 'notes' });
+Product.hasMany(Notes, { foreignKey: 'productId', as: 'notes' });
 
 export {
   User,
