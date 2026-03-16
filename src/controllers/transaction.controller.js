@@ -648,6 +648,7 @@ export const createTransfert = async (req, res) => {
         senderName:   sender.username,
         receiverName: receiver.username,
         amount:       transferAmount,
+        isSender:     true,
       });
 
       const htmlReceiver = generateSupportReceivedEmailTemplateTransfert({
@@ -656,6 +657,7 @@ export const createTransfert = async (req, res) => {
         senderName:   sender.username,
         receiverName: receiver.username,
         amount:       finalReceiverAmount,
+        isSender:     false,
       });
 
       await Promise.all([

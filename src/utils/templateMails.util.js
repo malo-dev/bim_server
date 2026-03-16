@@ -994,8 +994,9 @@ export const generateSupportReceivedEmailTemplateTransfert = ({
   username,
   subject,
   amount,
-  senderName,    // optionnel pour receiver
-  receiverName,  // optionnel pour sender
+  senderName,
+  receiverName,
+  isSender,
 }) => {
   return `
 <!DOCTYPE html>
@@ -1032,9 +1033,9 @@ style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 6px 18
 <h2 style="margin-top:0;font-size:20px;">Bonjour ${username},</h2>
 
 <p style="font-size:16px;line-height:1.7;">
-${senderName 
-  ? `Vous avez transféré <strong>${amount}$</strong> à <strong>${receiverName}</strong> avec succès.` 
-  : `Vous avez reçu <strong>${amount}$</strong> de <strong>${senderName}</strong>.`} 
+${isSender
+  ? `Vous avez transféré <strong>${amount} EC</strong> à <strong>${receiverName}</strong> avec succès.`
+  : `Vous avez reçu <strong>${amount} EC</strong> de <strong>${senderName}</strong>.`}
 </p>
 
 <table width="100%" cellpadding="10" cellspacing="0"
@@ -1045,7 +1046,7 @@ style="border-collapse:collapse;margin-top:20px;font-size:14px;">
   <td>${amount}$</td>
 </tr>
 
-${senderName ? `
+${isSender ? `
 <tr>
   <td><strong>Bénéficiaire</strong></td>
   <td>${receiverName}</td>
