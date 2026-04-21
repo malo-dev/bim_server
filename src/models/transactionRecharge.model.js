@@ -14,11 +14,7 @@ const TransactionRecharge = sequelize.define(
     amount: {
       type: DataTypes.FLOAT,
       allowNull: false,
-      validate: {
-        min: 1,   
-        max: 1000,
-      },
-      comment: 'Montant du retrait (min: 5$, max: 1000$)',
+      validate: { min: 0.01 },
     },
 
     telephone: {
@@ -32,6 +28,12 @@ const TransactionRecharge = sequelize.define(
       allowNull: false,
       validate: { notEmpty: true },
       comment: 'Référence unique de la recharge',
+    },
+
+    orderNumber: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      comment: 'orderNumber retourné par FlexPay',
     },
 
     status: {
