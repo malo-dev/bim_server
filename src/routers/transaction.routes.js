@@ -16,7 +16,7 @@ import {
   deleteTransactionPaiement,
 } from '../controllers/transaction.controller.js';
 
-import {recharge} from '../controllers/recharge.controller.js'
+import { recharge, flexpayCallback, flexpayApproved, flexpayCancel, flexpayDecline, verifyPayment } from '../controllers/recharge.controller.js'
 import authMiddleware from '../../middlewares/auth.middleware.js';
 
 const router = express.Router();
@@ -31,8 +31,13 @@ router.post('/transfert', authMiddleware, createTransfert);
 router.post('/paiement', authMiddleware, createPaiement);
 router.post('/createrecharge', authMiddleware, createRecharge);
 router.post('/recharge', authMiddleware, recharge );
+router.post('/recharge/callback', flexpayCallback);
+router.get('/recharge/approved/:reference', flexpayApproved);
+router.get('/recharge/cancel/:reference', flexpayCancel);
+router.get('/recharge/decline/:reference', flexpayDecline);
 router.post('/retrait', authMiddleware,  createRetrait );
 router.get('/recharge/status', authMiddleware, checkRechargeStatus);
+router.post('/recharge/verify', authMiddleware, verifyPayment);
 router.get("/transactions", getTransactionsPaiement);
 router.get("/transactions/:id", getTransactionPaiementById);
 router.put("/transactions/:id", updateTransactionPaiement);
