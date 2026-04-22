@@ -503,7 +503,8 @@ export const verifyPayment = async (req, res) => {
     }
 
     if (rechargeRecord.status === "failed") {
-      return res.status(200).json({ message: "Transaction échouée", status: "failed" });
+      emitToUser(rechargeRecord.id, "recharge:cancelled", { reference });
+      return res.status(200).json({ message: "Transaction annulée", status: "cancelled" });
     }
 
     const orderRef = rechargeRecord.orderNumber;
@@ -514,6 +515,7 @@ export const verifyPayment = async (req, res) => {
     let checkData;
     try {
       checkData = await checkFlexPayTransaction(orderRef);
+      console.log("[verifyPayment] FlexPay check 👉", JSON.stringify(checkData));
     } catch (e) {
       console.error("[verifyPayment] Erreur check FlexPay :", e.message);
       return res.status(500).json({ message: "Impossible de contacter FlexPay", status: "error" });
@@ -521,8 +523,16 @@ export const verifyPayment = async (req, res) => {
 
     const txStatus = String(checkData?.transaction?.status);
 
-    if (String(checkData?.code) !== "0" || txStatus !== "0") {
-      return res.status(200).json({ message: "Paiement non encore confirmé par FlexPay", status: "pending" });
+    /* Paiement annulé ou refusé par l'opérateur */
+    if (String(checkData?.code) !== "0") {
+      await rechargeRecord.update({ status: "failed" });
+      emitToUser(rechargeRecord.id, "recharge:cancelled", { reference });
+      return res.status(200).json({ message: "Paiement annulé ou refusé", status: "cancelled" });
+    }
+
+    /* Paiement encore en attente chez l'opérateur */
+    if (txStatus !== "0") {
+      return res.status(200).json({ message: "Paiement pas encore confirmé", status: "pending" });
     }
 
     /* Paiement confirmé → on crédite */
