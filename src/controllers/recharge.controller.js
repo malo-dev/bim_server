@@ -521,17 +521,33 @@ export const verifyPayment = async (req, res) => {
       return res.status(500).json({ message: "Impossible de contacter FlexPay", status: "error" });
     }
 
-    const txStatus = String(checkData?.transaction?.status);
+    const txStatus  = String(checkData?.transaction?.status ?? "");
+    const outerCode = String(checkData?.code ?? "");
 
-    /* Paiement annulé ou refusé par l'opérateur */
-    if (String(checkData?.code) !== "0") {
+    console.log("[verifyPayment] outerCode =", outerCode, "| txStatus =", txStatus);
+
+    /* FlexPay signale une erreur au niveau de l'appel (transaction introuvable, annulée côté opérateur, etc.) */
+    if (outerCode !== "0") {
       await rechargeRecord.update({ status: "failed" });
       emitToUser(rechargeRecord.id, "recharge:cancelled", { reference });
       return res.status(200).json({ message: "Paiement annulé ou refusé", status: "cancelled" });
     }
 
-    /* Paiement encore en attente chez l'opérateur */
+    /* txStatus = "0" → succès ; "1" → encore en attente ; "2" / autre → annulé/refusé */
+    if (txStatus !== "0" && txStatus !== "1" && txStatus !== "") {
+      await rechargeRecord.update({ status: "failed" });
+      emitToUser(rechargeRecord.id, "recharge:cancelled", { reference });
+      return res.status(200).json({ message: "Paiement annulé ou refusé par l'opérateur", status: "cancelled" });
+    }
+
+    /* Paiement encore en attente chez l'opérateur — on expire après 10 min */
     if (txStatus !== "0") {
+      const ageMs = Date.now() - new Date(rechargeRecord.createdAt).getTime();
+      if (ageMs > 10 * 60 * 1000) {
+        await rechargeRecord.update({ status: "failed" });
+        emitToUser(rechargeRecord.id, "recharge:cancelled", { reference });
+        return res.status(200).json({ message: "Transaction expirée (10 min)", status: "cancelled" });
+      }
       return res.status(200).json({ message: "Paiement pas encore confirmé", status: "pending" });
     }
 
