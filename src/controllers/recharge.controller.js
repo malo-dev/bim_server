@@ -303,6 +303,7 @@ export const recharge = async (req, res) => {
         message: "Paiement FlexPay échoué",
         details: mobileData?.message || "Erreur inconnue",
         status:  "failed",
+        data :mobileData
       });
     }
 
@@ -530,14 +531,14 @@ export const verifyPayment = async (req, res) => {
     if (outerCode !== "0") {
       await rechargeRecord.update({ status: "failed" });
       emitToUser(rechargeRecord.id, "recharge:cancelled", { reference });
-      return res.status(200).json({ message: "Paiement annulé ou refusé", status: "cancelled" });
+      return res.status(200).json({ message: "Paiement annulé ou refusé", status: "cancelled",data:JSON.stringify(checkData) });
     }
 
     /* txStatus = "0" → succès ; "1" → encore en attente ; "2" / autre → annulé/refusé */
     if (txStatus !== "0" && txStatus !== "1" && txStatus !== "") {
       await rechargeRecord.update({ status: "failed" });
       emitToUser(rechargeRecord.id, "recharge:cancelled", { reference });
-      return res.status(200).json({ message: "Paiement annulé ou refusé par l'opérateur", status: "cancelled" });
+      return res.status(200).json({ message: "Paiement annulé ou refusé par l'opérateur", status: "cancelled",data:JSON.stringify(checkData)});
     }
 
     /* Paiement encore en attente chez l'opérateur — on expire après 10 min */
@@ -546,7 +547,7 @@ export const verifyPayment = async (req, res) => {
       if (ageMs > 10 * 60 * 1000) {
         await rechargeRecord.update({ status: "failed" });
         emitToUser(rechargeRecord.id, "recharge:cancelled", { reference });
-        return res.status(200).json({ message: "Transaction expirée (10 min)", status: "cancelled" });
+        return res.status(200).json({ message: "Transaction expirée (10 min)", status: "cancelled",data:JSON.stringify(checkData) });
       }
       return res.status(200).json({ message: "Paiement pas encore confirmé", status: "pending" });
     }
@@ -571,13 +572,13 @@ export const verifyPayment = async (req, res) => {
         reference,
       });
       sendConfirmationEmail(userItem, ownerItem, rawAmount, montantCredite);
-      return res.status(200).json({ message: "Compte crédité avec succès", status: "success", montantCredite });
+      return res.status(200).json({ message: "Compte crédité avec succès", status: "success", montantCredite,data:JSON.stringify(checkData) });
     }
 
-    return res.status(200).json({ message: "Erreur lors du crédit", status: "error" });
+    return res.status(200).json({ message: "Erreur lors du crédit", status: "error" ,data:JSON.stringify(checkData)});
 
   } catch (error) {
     console.error("[verifyPayment] Erreur :", error);
-    return res.status(500).json({ message: "Erreur serveur", status: "error" });
+    return res.status(500).json({ message: "Erreur serveur", status: "error" ,data:JSON.stringify(checkData)});
   }
 };
