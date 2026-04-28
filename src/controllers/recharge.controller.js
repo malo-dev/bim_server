@@ -534,8 +534,8 @@ export const verifyPayment = async (req, res) => {
       return res.status(200).json({ message: "Paiement annulé ou refusé", status: "cancelled", data: checkData });
     }
 
-    /* txStatus = "0" → succès ; "1" → encore en attente ; "2" / autre → annulé/refusé */
-    if (txStatus !== "0" && txStatus !== "1" && txStatus !== "") {
+    /* txStatus = "0" → succès ; "1" / "2" → encore en attente (push envoyé) ; autre → annulé/refusé */
+    if (txStatus !== "0" && txStatus !== "1" && txStatus !== "2" && txStatus !== "") {
       await rechargeRecord.update({ status: "failed" });
       emitToUser(rechargeRecord.id, "recharge:cancelled", { reference });
       return res.status(200).json({ message: "Paiement annulé ou refusé par l'opérateur", status: "cancelled", data: checkData });
