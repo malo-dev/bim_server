@@ -1509,6 +1509,86 @@ export const getAdminAccounts = async (req, res) => {
   }
 };
 
+// ─── Portail entreprise : gestion des admins de la company ───────────────────
+
+export const getMyCompanyAdmins = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const myRole = await sequelize.models.UserRole.findOne({ where: { userId } });
+    const companyId = myRole?.companyId;
+    if (!companyId) return res.status(403).json({ message: 'Aucune entreprise associée à ce compte' });
+
+    const companyRole = await Role.findOne({ where: { name: 'COMPANY_ADMIN' } });
+    if (!companyRole) return res.status(200).json({ data: [] });
+
+    const userRoles = await sequelize.models.UserRole.findAll({
+      where: { companyId, roleId: companyRole.id },
+    });
+    const userIds = userRoles.map((ur) => ur.userId);
+
+    const users = await User.findAll({
+      where: { id: userIds },
+      attributes: { exclude: ['password', 'otp', 'otpExpires', 'resetPasswordToken', 'resetPasswordExpiresAt', 'refreshToken', 'token', 'TokenAbonemment', 'randomly'] },
+      order: [['createdAt', 'ASC']],
+    });
+    return res.status(200).json({ data: users });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+export const updateMyCompanyAdmin = async (req, res) => {
+  try {
+    const requesterId = req.user?.id;
+    const targetId = parseInt(req.params.id, 10);
+    const myRole = await sequelize.models.UserRole.findOne({ where: { userId: requesterId } });
+    const companyId = myRole?.companyId;
+    if (!companyId) return res.status(403).json({ message: 'Aucune entreprise associée à ce compte' });
+
+    const targetRole = await sequelize.models.UserRole.findOne({ where: { userId: targetId, companyId } });
+    if (!targetRole) return res.status(404).json({ message: 'Utilisateur introuvable dans votre entreprise' });
+
+    const user = await User.findByPk(targetId);
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+    const { username, email, password } = req.body;
+    const updateData = {};
+    if (username) updateData.username = username;
+    if (email) updateData.email = email;
+    if (password) updateData.password = await bcrypt.hash(password, 10);
+
+    await user.update(updateData);
+    return res.status(200).json({ message: 'Compte mis à jour avec succès' });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+export const deleteMyCompanyAdmin = async (req, res) => {
+  try {
+    const requesterId = req.user?.id;
+    const targetId = parseInt(req.params.id, 10);
+
+    if (requesterId === targetId) {
+      return res.status(400).json({ message: 'Vous ne pouvez pas supprimer votre propre compte' });
+    }
+
+    const myRole = await sequelize.models.UserRole.findOne({ where: { userId: requesterId } });
+    const companyId = myRole?.companyId;
+    if (!companyId) return res.status(403).json({ message: 'Aucune entreprise associée à ce compte' });
+
+    const targetRole = await sequelize.models.UserRole.findOne({ where: { userId: targetId, companyId } });
+    if (!targetRole) return res.status(404).json({ message: 'Utilisateur introuvable dans votre entreprise' });
+
+    await sequelize.models.UserRole.destroy({ where: { userId: targetId } });
+    await User.destroy({ where: { id: targetId } });
+
+    return res.status(200).json({ message: 'Compte supprimé avec succès' });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
 export {
   register,
   login,

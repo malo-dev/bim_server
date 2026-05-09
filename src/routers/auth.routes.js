@@ -29,6 +29,9 @@ import {
   getAdminAccounts,
   createCommerceAccount,
   addCompanyAdmin,
+  getMyCompanyAdmins,
+  updateMyCompanyAdmin,
+  deleteMyCompanyAdmin,
 } from '../controllers/auth.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 import upload from '../../middlewares/upload.js';
@@ -78,5 +81,10 @@ router.post('/add-company-admin', authMiddleware, addCompanyAdmin);
 
 // Commerce + gestionnaire
 router.post('/create-commerce-account', authMiddleware, createCommerceAccount);
+
+// Portail entreprise : gestion des comptes admins de la company
+router.get('/my-company-admins', authMiddleware, getMyCompanyAdmins);
+router.put('/my-company-admins/:id', authMiddleware, updateMyCompanyAdmin);
+router.delete('/my-company-admins/:id', authMiddleware, deleteMyCompanyAdmin);
 
 export default router;
