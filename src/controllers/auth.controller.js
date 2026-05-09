@@ -1339,6 +1339,64 @@ export const createCompanyAccount = async (req, res) => {
   }
 };
 
+// ─── Ajout d'un admin à une entreprise existante ──────────────────────────────
+export const addCompanyAdmin = async (req, res) => {
+  const { companyId, username, email, password } = req.body;
+
+  if (!companyId || !username || !email || !password) {
+    return res.status(400).json({ message: 'companyId, username, email et password sont requis' });
+  }
+
+  const t = await sequelize.transaction();
+  try {
+    const company = await sequelize.models.Company.findByPk(companyId, { transaction: t });
+    if (!company) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Entreprise introuvable' });
+    }
+
+    const existingUser = await User.findOne({ where: { email }, transaction: t });
+    if (existingUser) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Cet email est déjà utilisé' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = await User.create(
+      {
+        username,
+        email,
+        password: hashedPassword,
+        isActive: true,
+        accountNumber: String(generateAccountNumber()),
+      },
+      { transaction: t }
+    );
+
+    const [companyRole] = await Role.findOrCreate({
+      where: { name: 'COMPANY_ADMIN' },
+      defaults: { name: 'COMPANY_ADMIN', description: 'Administrateur entreprise' },
+      transaction: t,
+    });
+
+    await sequelize.models.UserRole.create(
+      { userId: newUser.id, roleId: companyRole.id },
+      { transaction: t }
+    );
+
+    await t.commit();
+
+    return res.status(201).json({
+      message: 'Administrateur ajouté avec succès',
+      admin: { id: newUser.id, username: newUser.username, email: newUser.email, role: 'COMPANY_ADMIN' },
+      company: { id: company.companyId, name: company.name },
+    });
+  } catch (error) {
+    await t.rollback();
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
 // ─── Création d'un commerce + gestionnaire optionnel ─────────────────────────
 export const createCommerceAccount = async (req, res) => {
   const { commerceName, commerceEmail, username, email, password } = req.body;

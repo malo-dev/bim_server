@@ -28,6 +28,7 @@ import {
   requestBimReset,
   getAdminAccounts,
   createCommerceAccount,
+  addCompanyAdmin,
 } from '../controllers/auth.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 import upload from '../../middlewares/upload.js';
@@ -71,6 +72,9 @@ router.get('/dashboard-stats', authMiddleware, getDashboardStats);
 
 // Liste des comptes admin (BIM + COMPANY_ADMIN)
 router.get('/admin-accounts', authMiddleware, getAdminAccounts);
+
+// Ajout d'un admin à une entreprise existante
+router.post('/add-company-admin', authMiddleware, addCompanyAdmin);
 
 // Commerce + gestionnaire
 router.post('/create-commerce-account', authMiddleware, createCommerceAccount);
