@@ -26,6 +26,7 @@ import {
   getDashboardStats,
   resetBimAdminPassword,
   requestBimReset,
+  getAdminAccounts,
 } from '../controllers/auth.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 import upload from '../../middlewares/upload.js';
@@ -66,5 +67,8 @@ router.post('/reset-bim-password', resetBimAdminPassword);
 
 // Dashboard stats
 router.get('/dashboard-stats', authMiddleware, getDashboardStats);
+
+// Liste des comptes admin (BIM + COMPANY_ADMIN)
+router.get('/admin-accounts', authMiddleware, getAdminAccounts);
 
 export default router;

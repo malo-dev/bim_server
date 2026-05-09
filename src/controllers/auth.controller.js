@@ -337,6 +337,8 @@ const getAllUsers = async (req, res) => {
       pageSize = 20,
       commerceId,
       branchTrackId,
+      createdAtFrom,
+      createdAtTo,
     } = req.query;
 
     const isPaginate = paginate === 'true';
@@ -381,7 +383,17 @@ const getAllUsers = async (req, res) => {
       ];
     }
 
-  
+    if (createdAtFrom || createdAtTo) {
+      const dateWhere = {};
+      if (createdAtFrom) dateWhere[Op.gte] = new Date(createdAtFrom);
+      if (createdAtTo) {
+        const end = new Date(createdAtTo);
+        end.setHours(23, 59, 59, 999);
+        dateWhere[Op.lte] = end;
+      }
+      whereClause.createdAt = dateWhere;
+    }
+
     const queryOptions = {
       where: whereClause,
         attributes: {
@@ -1316,6 +1328,56 @@ export const createCompanyAccount = async (req, res) => {
     });
   } catch (error) {
     await t.rollback();
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// ─── Liste des comptes admin (BIM + COMPANY_ADMIN) ───────────────────────────
+export const getAdminAccounts = async (req, res) => {
+  try {
+    const { search, page = 1, pageSize = 20, paginate = 'false' } = req.query;
+    const isPaginate = paginate === 'true';
+    const limit = parseInt(pageSize, 10);
+    const currentPage = parseInt(page, 10);
+    const offset = (currentPage - 1) * limit;
+
+    const userWhere = {};
+    if (search) {
+      userWhere[Op.or] = [
+        { username: { [Op.like]: `%${search}%` } },
+        { email: { [Op.like]: `%${search}%` } },
+        { fullname: { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const queryOptions = {
+      where: userWhere,
+      attributes: {
+        exclude: ['password', 'otp', 'otpExpires', 'resetPasswordToken', 'resetPasswordExpiresAt', 'refreshToken', 'token', 'TokenAbonemment', 'randomly'],
+      },
+      include: [
+        {
+          model: Role,
+          as: 'role',
+          where: { name: { [Op.in]: ['BIM', 'COMPANY_ADMIN'] } },
+          required: true,
+        },
+      ],
+      order: [['createdAt', 'DESC']],
+      distinct: true,
+    };
+
+    if (isPaginate) {
+      const { rows, count } = await User.findAndCountAll({ ...queryOptions, limit, offset });
+      return res.status(200).json({
+        data: rows,
+        pagination: { total: count, page: currentPage, pageSize: limit, totalPages: Math.ceil(count / limit) },
+      });
+    }
+
+    const users = await User.findAll(queryOptions);
+    return res.status(200).json({ data: users, total: users.length });
+  } catch (error) {
     res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
 };
