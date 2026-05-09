@@ -198,6 +198,17 @@ Notification.belongsTo(BranchTrack, { foreignKey: 'branchTrackId', ...CASCADE })
 
 // ================= EXPORT =================
 
+// ================= ORDERS =================
+
+Order.belongsTo(User,    { foreignKey: 'userId',    as: 'user',    ...SET_NULL });
+Order.belongsTo(Company, { foreignKey: 'companyId', as: 'company', ...CASCADE  });
+Order.belongsTo(Product, { foreignKey: 'productId', as: 'product', ...CASCADE  });
+
+User.hasMany(Order,    { foreignKey: 'userId',    as: 'orders' });
+Company.hasMany(Order, { foreignKey: 'companyId', as: 'companyOrders' });
+Product.hasMany(Order, { foreignKey: 'productId', as: 'productOrders' });
+
+
 // ================= NOTES =================
 
 Notes.belongsTo(User,    { foreignKey: 'userId',    as: 'user',    ...SET_NULL });

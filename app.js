@@ -26,6 +26,7 @@ import BusinessRoutes from './src/routers/businessCategory.routes.js';
 import CompanyRoutes from './src/routers/company.routes.js'
 import NotesRoutes from './src/routers/notes.routes.js'
 import BonusRoutes from './src/routers/bonusTrack.routes.js'
+import OrderRoutes from './src/routers/order.routes.js'
 import path from 'path';
 const app = express();
 dotenv.config();
@@ -114,7 +115,8 @@ app.use('/api/v1/tsx', TransactionRoutes);
 app.use('/api/v1/sector', BusinessRoutes);
 app.use('/api/v1/company', CompanyRoutes);
 app.use('/api/v1/bonus', BonusRoutes);
-app.use('/api/v1/notes',NotesRoutes)
+app.use('/api/v1/notes', NotesRoutes)
+app.use('/api/v1/order', OrderRoutes)
 
 
 app.get('/', (req, res) => {
