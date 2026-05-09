@@ -1043,37 +1043,83 @@ export const updateSoldNumber = async (req, res) => {
   }
 };
 
-// ─── Reset mot de passe admin BIM (public, email vérifié = rôle BIM requis) ──
+// ─── Étape 1 : Demande de reset admin BIM → envoie OTP par email ─────────────
+export const requestBimReset = async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ message: 'Email requis' });
+
+  try {
+    const user = await User.findOne({ where: { email } });
+    if (!user) return res.status(404).json({ message: 'Aucun compte trouvé avec cet email' });
+
+    const bimRole = await Role.findOne({ where: { name: 'BIM' } });
+    if (!bimRole) return res.status(403).json({ message: 'Aucun rôle BIM configuré' });
+
+    const userRole = await sequelize.models.UserRole.findOne({ where: { userId: user.id, roleId: bimRole.id } });
+    if (!userRole) return res.status(403).json({ message: 'Ce compte n\'est pas un administrateur BIM' });
+
+    const otp = generateOtp();
+    const otpExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 min
+
+    await user.update({ otp, otpExpires });
+
+    const transporter = nodemailer.createTransport({
+      host: 'mail.bimreseau.com',
+      port: 465,
+      secure: true,
+      auth: { user: 'noreply@bimreseau.com', pass: process.env.EMAIL_PASSWORD },
+    });
+
+    await transporter.sendMail({
+      from: 'noreply@bimreseau.com',
+      to: email,
+      subject: 'BIM Admin — Code de réinitialisation',
+      html: generateOtpEmailTemplate(user.username, otp),
+    });
+
+    return res.status(200).json({ message: 'Un code OTP a été envoyé à votre adresse email.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// ─── Étape 2 : Vérification OTP + nouveau mot de passe ───────────────────────
 export const resetBimAdminPassword = async (req, res) => {
-  const { email, newPassword } = req.body;
-  if (!email || !newPassword) {
-    return res.status(400).json({ message: 'Email et nouveau mot de passe requis' });
+  const { email, otp, newPassword } = req.body;
+  if (!email || !otp || !newPassword) {
+    return res.status(400).json({ message: 'Email, OTP et nouveau mot de passe requis' });
   }
   if (newPassword.length < 6) {
     return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 6 caractères' });
   }
   try {
     const user = await User.findOne({ where: { email } });
-    if (!user) {
-      return res.status(404).json({ message: 'Aucun compte trouvé avec cet email' });
+    if (!user) return res.status(404).json({ message: 'Compte introuvable' });
+
+    if (!user.otp || user.otp !== otp) {
+      return res.status(400).json({ message: 'Code OTP incorrect' });
+    }
+    if (!user.otpExpires || new Date() > new Date(user.otpExpires)) {
+      return res.status(400).json({ message: 'Code OTP expiré. Recommencez la procédure.' });
     }
 
     const bimRole = await Role.findOne({ where: { name: 'BIM' } });
-    if (!bimRole) {
-      return res.status(403).json({ message: 'Accès refusé : aucun rôle BIM configuré' });
-    }
-
-    const userRole = await sequelize.models.UserRole.findOne({
-      where: { userId: user.id, roleId: bimRole.id },
-    });
-    if (!userRole) {
-      return res.status(403).json({ message: 'Accès refusé : ce compte n\'est pas un administrateur BIM' });
-    }
+    const userRole = bimRole
+      ? await sequelize.models.UserRole.findOne({ where: { userId: user.id, roleId: bimRole.id } })
+      : null;
+    if (!userRole) return res.status(403).json({ message: 'Ce compte n\'est pas un administrateur BIM' });
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await user.update({ password: hashedPassword, loginAttempts: 0, lockUntil: null, isActive: true });
+    await user.update({
+      password: hashedPassword,
+      otp: null,
+      otpExpires: null,
+      loginAttempts: 0,
+      lockUntil: null,
+      isActive: true,
+    });
 
-    return res.status(200).json({ message: 'Mot de passe mis à jour avec succès. Vous pouvez vous connecter.' });
+    return res.status(200).json({ message: 'Mot de passe mis à jour. Vous pouvez vous connecter.' });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }

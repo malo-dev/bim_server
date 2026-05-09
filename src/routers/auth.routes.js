@@ -25,6 +25,7 @@ import {
   bootstrapAdmin,
   getDashboardStats,
   resetBimAdminPassword,
+  requestBimReset,
 } from '../controllers/auth.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 import upload from '../../middlewares/upload.js';
@@ -58,7 +59,9 @@ router.post('/create-company-account', authMiddleware, createCompanyAccount);
 // Bootstrap : premier admin (public — bloqué si un admin BIM existe déjà)
 router.post('/bootstrap', bootstrapAdmin);
 
-// Reset mot de passe admin BIM (public, vérifie que l'email a le rôle BIM)
+// Etape 1 : envoie l'OTP par email
+router.post('/request-bim-reset', requestBimReset);
+// Etape 2 : verifie OTP + nouveau mot de passe
 router.post('/reset-bim-password', resetBimAdminPassword);
 
 // Dashboard stats
