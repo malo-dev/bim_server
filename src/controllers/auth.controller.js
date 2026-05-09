@@ -1,7 +1,7 @@
 /* eslint-disable no-undef */
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { User, Role ,BranchTrack, Commerce} from '../models/index.js';
+import { User, Role, BranchTrack, Commerce, Company, BusinessCategory, Order, Transaction } from '../models/index.js';
 import sequelize from '../config/database.js';
 import { Op } from 'sequelize';
 import crypto from 'crypto';
@@ -1040,6 +1040,98 @@ export const updateSoldNumber = async (req, res) => {
     return res.status(200).json({ message: 'soldNumber mis à jour avec succès', soldNumber: value });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ─── Bootstrap : premier compte BIM Admin (public, une seule fois) ───────────
+export const bootstrapAdmin = async (req, res) => {
+  const { username, email, password } = req.body;
+  if (!username || !email || !password) {
+    return res.status(400).json({ message: 'username, email et password sont requis' });
+  }
+  try {
+    const [bimRole] = await Role.findOrCreate({
+      where: { name: 'BIM' },
+      defaults: { name: 'BIM', description: 'Administrateur BIM — accès global' },
+    });
+
+    const existingAdmin = await sequelize.models.UserRole.findOne({ where: { roleId: bimRole.id } });
+    if (existingAdmin) {
+      return res.status(403).json({ message: 'Un administrateur BIM existe déjà. Utilisez la page de connexion.' });
+    }
+
+    const existingEmail = await User.findOne({ where: { email } });
+    if (existingEmail) return res.status(400).json({ message: 'Email déjà utilisé' });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = await User.create({
+      username,
+      email,
+      password: hashedPassword,
+      isActive: true,
+      accountNumber: String(generateAccountNumber()),
+    });
+
+    await sequelize.models.UserRole.create({ userId: newUser.id, roleId: bimRole.id });
+
+    return res.status(201).json({
+      message: 'Compte administrateur BIM créé. Vous pouvez maintenant vous connecter.',
+      user: { id: newUser.id, username: newUser.username, email: newUser.email },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// ─── Dashboard Stats ─────────────────────────────────────────────────────────
+export const getDashboardStats = async (req, res) => {
+  try {
+    const { period } = req.query;
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+
+    let periodStart = null;
+    if (period) {
+      const { getDateRangeByPeriod } = await import('../utils/getDateRangeByPeriod.util.js');
+      periodStart = getDateRangeByPeriod(period);
+    }
+
+    const periodWhere = periodStart ? { createdAt: { [Op.gte]: periodStart } } : {};
+
+    const [
+      totalUsers,
+      usersToday,
+      activeUsers,
+      blockedUsers,
+      totalTransactions,
+      totalOrders,
+      totalCompanies,
+      totalSectors,
+    ] = await Promise.all([
+      User.count({ where: { email: { [Op.ne]: 'bimbank@bimreseau.com' } } }),
+      User.count({ where: { createdAt: { [Op.gte]: startOfToday }, email: { [Op.ne]: 'bimbank@bimreseau.com' } } }),
+      User.count({ where: { isActive: true, email: { [Op.ne]: 'bimbank@bimreseau.com' } } }),
+      User.count({ where: { isBlocked: true } }),
+      Transaction.count({ where: periodWhere }),
+      Order.count({ where: periodWhere }),
+      Company.count(),
+      BusinessCategory.count(),
+    ]);
+
+    return res.status(200).json({
+      totalUsers,
+      usersToday,
+      activeUsers,
+      blockedUsers,
+      totalTransactions,
+      totalOrders,
+      totalCompanies,
+      totalSectors,
+      period: period || 'all',
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
 };
 

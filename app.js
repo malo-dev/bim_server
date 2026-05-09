@@ -62,11 +62,11 @@ app.use(
 );
 const ALLOWED_ORIGINS = [
   'http://localhost:5000',
+  'http://localhost:5173',
   'http://localhost:8083',
   'http://192.168.1.39:5000',
   'http://192.168.1.39:8083',
   'http://10.0.10.81:5000',
-  
   'https://serverbimnext.masmara-dimajelo.org',
 ];
 

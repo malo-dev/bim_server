@@ -22,6 +22,8 @@ import {
   updateSoldNumber,
   createBimAdmin,
   createCompanyAccount,
+  bootstrapAdmin,
+  getDashboardStats,
 } from '../controllers/auth.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 import upload from '../../middlewares/upload.js';
@@ -51,5 +53,11 @@ router.put('/users/:id/sold', authMiddleware, updateSoldNumber);
 // Création des comptes admin (BIM ou Entreprise)
 router.post('/create-bim-admin', authMiddleware, createBimAdmin);
 router.post('/create-company-account', authMiddleware, createCompanyAccount);
+
+// Bootstrap : premier admin (public — bloqué si un admin BIM existe déjà)
+router.post('/bootstrap', bootstrapAdmin);
+
+// Dashboard stats
+router.get('/dashboard-stats', authMiddleware, getDashboardStats);
 
 export default router;
