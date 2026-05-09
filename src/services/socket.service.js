@@ -1,8 +1,9 @@
 import { Server } from 'socket.io';
+import User from '../models/User.model.js';
 
 let io = null;
 
-// userId -> { userId, socketId, connectedAt }
+// userId -> { userId, username, socketId, connectedAt }
 const onlineUsers = new Map();
 
 export const initSocket = (httpServer) => {
@@ -27,21 +28,30 @@ export const initSocket = (httpServer) => {
     console.log(`🔌 Socket connecté : ${socket.id}`);
 
     // Utilisateur normal rejoint sa room privée
-    socket.on('join', (userId) => {
+    socket.on('join', async (userId) => {
       if (userId) {
         socket.join(`user_${userId}`);
+        const connectedAt = new Date().toISOString();
+
+        // Récupération du username depuis la DB
+        let username = null;
+        try {
+          const user = await User.findByPk(userId, { attributes: ['username'] });
+          username = user?.username ?? null;
+        } catch (e) {
+          console.error('[Socket] Erreur lookup username:', e.message);
+        }
+
         onlineUsers.set(String(userId), {
           userId: String(userId),
+          username,
           socketId: socket.id,
-          connectedAt: new Date().toISOString(),
+          connectedAt,
         });
-        console.log(`👤 User ${userId} en ligne`);
+        console.log(`👤 User ${userId} (${username ?? 'inconnu'}) en ligne`);
 
         // Notifier les admins connectés
-        io.to('admin_room').emit('user:online', {
-          userId: String(userId),
-          connectedAt: new Date().toISOString(),
-        });
+        io.to('admin_room').emit('user:online', { userId: String(userId), username, connectedAt });
         io.to('admin_room').emit('online_users', Array.from(onlineUsers.values()));
       }
     });
@@ -61,8 +71,8 @@ export const initSocket = (httpServer) => {
       for (const [userId, info] of onlineUsers.entries()) {
         if (info.socketId === socket.id) {
           onlineUsers.delete(userId);
-          console.log(`👤 User ${userId} hors ligne`);
-          io.to('admin_room').emit('user:offline', { userId });
+          console.log(`👤 User ${userId} (${info.username ?? 'inconnu'}) hors ligne`);
+          io.to('admin_room').emit('user:offline', { userId, username: info.username });
           io.to('admin_room').emit('online_users', Array.from(onlineUsers.values()));
           break;
         }
