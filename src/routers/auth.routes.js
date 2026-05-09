@@ -19,7 +19,9 @@ import {
   storeExpoPushToken,
   createAgent,
   veryfUserPass,
-  updateSoldNumber
+  updateSoldNumber,
+  createBimAdmin,
+  createCompanyAccount,
 } from '../controllers/auth.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 import upload from '../../middlewares/upload.js';
@@ -45,5 +47,9 @@ router.post('/users/:userId/expoPushToken', storeExpoPushToken);
 router.post('/verifyPwd', veryfUserPass);
 router.delete('/account', authMiddleware, deleteAccount);
 router.put('/users/:id/sold', authMiddleware, updateSoldNumber);
+
+// Création des comptes admin (BIM ou Entreprise)
+router.post('/create-bim-admin', authMiddleware, createBimAdmin);
+router.post('/create-company-account', authMiddleware, createCompanyAccount);
 
 export default router;

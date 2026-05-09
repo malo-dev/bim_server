@@ -1043,6 +1043,109 @@ export const updateSoldNumber = async (req, res) => {
   }
 };
 
+// ─── Création compte BIM Admin ───────────────────────────────────────────────
+export const createBimAdmin = async (req, res) => {
+  const { username, email, password } = req.body;
+  if (!username || !email || !password) {
+    return res.status(400).json({ message: 'username, email et password sont requis' });
+  }
+  try {
+    const existing = await User.findOne({ where: { email } });
+    if (existing) return res.status(400).json({ message: 'Email déjà utilisé' });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = await User.create({
+      username,
+      email,
+      password: hashedPassword,
+      isActive: true,
+      accountNumber: String(generateAccountNumber()),
+    });
+
+    // Chercher ou créer le rôle BIM
+    const [bimRole] = await Role.findOrCreate({
+      where: { name: 'BIM' },
+      defaults: { name: 'BIM', description: 'Administrateur BIM — accès global' },
+    });
+
+    await sequelize.models.UserRole.create({ userId: newUser.id, roleId: bimRole.id });
+
+    return res.status(201).json({
+      message: 'Compte BIM Admin créé avec succès',
+      user: { id: newUser.id, username: newUser.username, email: newUser.email, role: 'BIM' },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// ─── Création compte Entreprise (company + admin user) ────────────────────────
+export const createCompanyAccount = async (req, res) => {
+  const { company, admin } = req.body;
+
+  if (!company?.name || !company?.email) {
+    return res.status(400).json({ message: "Le nom et l'email de l'entreprise sont requis" });
+  }
+  if (!admin?.username || !admin?.email || !admin?.password) {
+    return res.status(400).json({ message: "username, email et password de l'admin sont requis" });
+  }
+
+  const t = await sequelize.transaction();
+  try {
+    const existingCompany = await sequelize.models.Company.findOne({ where: { email: company.email }, transaction: t });
+    if (existingCompany) {
+      await t.rollback();
+      return res.status(400).json({ message: "Email entreprise déjà utilisé" });
+    }
+
+    const existingUser = await User.findOne({ where: { email: admin.email }, transaction: t });
+    if (existingUser) {
+      await t.rollback();
+      return res.status(400).json({ message: "Email admin déjà utilisé" });
+    }
+
+    const newCompany = await sequelize.models.Company.create(
+      { name: company.name, email: company.email, description: company.description || null, location: company.location || null },
+      { transaction: t }
+    );
+
+    const hashedPassword = await bcrypt.hash(admin.password, 10);
+    const newUser = await User.create(
+      {
+        username: admin.username,
+        email: admin.email,
+        password: hashedPassword,
+        isActive: true,
+        accountNumber: String(generateAccountNumber()),
+      },
+      { transaction: t }
+    );
+
+    const [companyRole] = await Role.findOrCreate({
+      where: { name: 'COMPANY_ADMIN' },
+      defaults: { name: 'COMPANY_ADMIN', description: 'Administrateur entreprise' },
+      transaction: t,
+    });
+
+    await sequelize.models.UserRole.create(
+      { userId: newUser.id, roleId: companyRole.id },
+      { transaction: t }
+    );
+
+    await t.commit();
+
+    return res.status(201).json({
+      message: 'Compte entreprise créé avec succès',
+      company: { id: newCompany.companyId, name: newCompany.name, email: newCompany.email },
+      admin: { id: newUser.id, username: newUser.username, email: newUser.email, role: 'COMPANY_ADMIN' },
+    });
+  } catch (error) {
+    await t.rollback();
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
 export {
   register,
   login,
