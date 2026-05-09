@@ -74,6 +74,7 @@ export const getAllProducts = async (req, res) => {
         { model: Currency, as: 'currency' },
         { model: Category, as: 'categories', through: { attributes: [] } },
         { model: ProductSold, as: 'productSold' },
+        { model: Company, as: 'company', attributes: ['companyId', 'name'] },
       ],
     };
 
