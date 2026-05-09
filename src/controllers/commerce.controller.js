@@ -8,20 +8,15 @@ export const getAllCommerces = async (req, res) => {
   try {
     const { search, period, paginate = 'false', page = 1, pageSize = 20, id} = req.query;
 
-    if (!id) {
-      return res.status(409).json({
-        message: 'id est obligatoire',
-      });
-    }
-
     const isPaginate = paginate === 'true';
     const limit = parseInt(pageSize, 10);
     const currentPage = parseInt(page, 10);
     const offset = (currentPage - 1) * limit;
 
-    const whereClause = {
-      id,
-    };
+    const whereClause = {};
+    if (id) {
+      whereClause.id = id;
+    }
 
     if (search) {
       whereClause[Op.and] = [

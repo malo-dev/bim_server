@@ -1292,7 +1292,14 @@ export const createCompanyAccount = async (req, res) => {
     }
 
     const newCompany = await sequelize.models.Company.create(
-      { name: company.name, email: company.email, description: company.description || null, location: company.location || null },
+      {
+        name: company.name,
+        email: company.email,
+        description: company.description || null,
+        location: company.location || null,
+        businessId: company.businessId || null,
+        logo: company.logo || null,
+      },
       { transaction: t }
     );
 
@@ -1325,6 +1332,57 @@ export const createCompanyAccount = async (req, res) => {
       message: 'Compte entreprise créé avec succès',
       company: { id: newCompany.companyId, name: newCompany.name, email: newCompany.email },
       admin: { id: newUser.id, username: newUser.username, email: newUser.email, role: 'COMPANY_ADMIN' },
+    });
+  } catch (error) {
+    await t.rollback();
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// ─── Création d'un commerce + gestionnaire optionnel ─────────────────────────
+export const createCommerceAccount = async (req, res) => {
+  const { commerceName, commerceEmail, username, email, password } = req.body;
+
+  if (!commerceName || !commerceEmail) {
+    return res.status(400).json({ message: 'Nom et email du commerce sont requis' });
+  }
+
+  const hasManager = !!(username && email && password);
+  const t = await sequelize.transaction();
+
+  try {
+    let newUser = null;
+
+    if (hasManager) {
+      const existingUser = await User.findOne({ where: { email }, transaction: t });
+      if (existingUser) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Email gestionnaire déjà utilisé' });
+      }
+      const hashedPassword = await bcrypt.hash(password, 10);
+      newUser = await User.create(
+        { username, email, password: hashedPassword, isActive: true, accountNumber: String(generateAccountNumber()) },
+        { transaction: t }
+      );
+    }
+
+    const commerceData = { commercename: commerceName, commerceemail: commerceEmail };
+    if (newUser) {
+      commerceData.id = newUser.id;
+      commerceData.userId = newUser.id;
+    }
+
+    const newCommerce = await Commerce.create(commerceData, { transaction: t });
+
+    if (newUser) {
+      await newUser.update({ commerceId: newCommerce.commerceId }, { transaction: t });
+    }
+
+    await t.commit();
+    return res.status(201).json({
+      message: hasManager ? 'Commerce et gestionnaire créés avec succès' : 'Commerce créé avec succès',
+      commerce: { id: newCommerce.commerceId, name: newCommerce.commercename, email: newCommerce.commerceemail },
+      ...(newUser && { user: { id: newUser.id, username: newUser.username, email: newUser.email } }),
     });
   } catch (error) {
     await t.rollback();

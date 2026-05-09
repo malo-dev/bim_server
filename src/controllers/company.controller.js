@@ -45,8 +45,8 @@ export const getAllCompanies = async (req, res) => {
       where: whereClause,
       order: [['createdAt', 'ASC']],
       include: [
-        { model: Product, as: 'products' }
-       
+        { model: Product, as: 'products' },
+        { model: BusinessCategory, as: 'category' },
       ],
     };
 
@@ -56,6 +56,7 @@ export const getAllCompanies = async (req, res) => {
         ...findOptions,
         limit: size,
         offset,
+        distinct: true,
       });
 
       return res.status(200).json({
@@ -99,8 +100,8 @@ export const getCompanyById = async (req, res) => {
 
     const company = await Company.findByPk(parsedId, {
       include: [
-        { model: Product, as: 'products' }
-       
+        { model: Product, as: 'products' },
+        { model: BusinessCategory, as: 'category' },
       ],
     });
 
@@ -156,15 +157,15 @@ if (duplicates.length > 0) {
 }
 
       
-      const businessIds = [...new Set(companies.map(c => c.businessId))];
-const existingBusinesses = await BusinessCategory.findAll({
-  where: { businessId: businessIds },
-  attributes: ['businessId']
-});
-if (existingBusinesses.length !== businessIds.length) {
-  return res.status(400).json({
-    message: "Certains businessId n'existent pas"
+      const businessIds = [...new Set(companies.map(c => c.businessId).filter(id => id != null))];
+if (businessIds.length > 0) {
+  const existingBusinesses = await BusinessCategory.findAll({
+    where: { businessId: businessIds },
+    attributes: ['businessId'],
   });
+  if (existingBusinesses.length !== businessIds.length) {
+    return res.status(400).json({ message: "Certains businessId n'existent pas" });
+  }
 }
 
 

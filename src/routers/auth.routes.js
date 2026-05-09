@@ -27,6 +27,7 @@ import {
   resetBimAdminPassword,
   requestBimReset,
   getAdminAccounts,
+  createCommerceAccount,
 } from '../controllers/auth.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 import upload from '../../middlewares/upload.js';
@@ -70,5 +71,8 @@ router.get('/dashboard-stats', authMiddleware, getDashboardStats);
 
 // Liste des comptes admin (BIM + COMPANY_ADMIN)
 router.get('/admin-accounts', authMiddleware, getAdminAccounts);
+
+// Commerce + gestionnaire
+router.post('/create-commerce-account', authMiddleware, createCommerceAccount);
 
 export default router;
