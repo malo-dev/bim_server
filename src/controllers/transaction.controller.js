@@ -1,5 +1,5 @@
 /* eslint-disable no-undef */
-import { Transaction,TransactionRetrait,User,TransactionTransfert, TransactionRecharge,History,Notification,TransactionPaiement,Order,Company, Product} from '../models/index.js';
+import { Transaction,TransactionRetrait,User,TransactionTransfert, TransactionRecharge,History,Notification,TransactionPaiement,Order,Company, Product, Currency} from '../models/index.js';
 import { Op } from 'sequelize';
 import { getDateRangeByPeriod } from '../utils/getDateRangeByPeriod.util.js';
 import axios from "axios";
@@ -1398,4 +1398,117 @@ export const deleteTransactionPaiement = async (req, res) => {
   }
 };
 
+// ─── Liste paginée des recharges ──────────────────────────────────────────────
+export const getRechargesList = async (req, res) => {
+  try {
+    const { search, status, period, startDate, endDate, page = 1, pageSize = 20 } = req.query;
+    const limit = parseInt(pageSize, 10);
+    const currentPage = parseInt(page, 10);
+    const offset = (currentPage - 1) * limit;
+
+    const where = {};
+    if (status) where.status = status;
+
+    if (period) {
+      const from = getDateRangeByPeriod(period);
+      if (from) where.createdAt = { [Op.gte]: from };
+    } else if (startDate && endDate) {
+      where.createdAt = { [Op.between]: [new Date(startDate), new Date(endDate)] };
+    }
+
+    if (search) {
+      where[Op.or] = [
+        { telephone: { [Op.like]: `%${search}%` } },
+        { reference: { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const { rows, count } = await TransactionRecharge.findAndCountAll({
+      where,
+      include: [{ model: User, as: 'user', attributes: ['id', 'username', 'email'] }],
+      order: [['createdAt', 'DESC']],
+      limit,
+      offset,
+      distinct: true,
+    });
+
+    res.json({ data: rows, total: count, currentPage, totalPages: Math.ceil(count / limit) });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// ─── Liste paginée des retraits ───────────────────────────────────────────────
+export const getRetraitsList = async (req, res) => {
+  try {
+    const { period, startDate, endDate, page = 1, pageSize = 20 } = req.query;
+    const limit = parseInt(pageSize, 10);
+    const currentPage = parseInt(page, 10);
+    const offset = (currentPage - 1) * limit;
+
+    const where = {};
+
+    if (period) {
+      const from = getDateRangeByPeriod(period);
+      if (from) where.createdAt = { [Op.gte]: from };
+    } else if (startDate && endDate) {
+      where.createdAt = { [Op.between]: [new Date(startDate), new Date(endDate)] };
+    }
+
+    const { rows, count } = await TransactionRetrait.findAndCountAll({
+      where,
+      include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'email'] }],
+      order: [['createdAt', 'DESC']],
+      limit,
+      offset,
+      distinct: true,
+    });
+
+    res.json({ data: rows, total: count, currentPage, totalPages: Math.ceil(count / limit) });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// ─── Liste paginée des paiements (avec filtre company + period) ───────────────
+export const getPaiementsList = async (req, res) => {
+  try {
+    const { companyId, search, period, startDate, endDate, page = 1, pageSize = 20 } = req.query;
+    const limit = parseInt(pageSize, 10);
+    const currentPage = parseInt(page, 10);
+    const offset = (currentPage - 1) * limit;
+
+    const where = {};
+    if (companyId) where.companyId = companyId;
+
+    if (period) {
+      const from = getDateRangeByPeriod(period);
+      if (from) where.createdAt = { [Op.gte]: from };
+    } else if (startDate && endDate) {
+      where.createdAt = { [Op.between]: [new Date(startDate), new Date(endDate)] };
+    }
+
+    if (search) {
+      where[Op.or] = [{ description: { [Op.like]: `%${search}%` } }];
+    }
+
+    const { rows, count } = await TransactionPaiement.findAndCountAll({
+      where,
+      include: [
+        { model: User, as: 'payer', attributes: ['id', 'username', 'email'] },
+        { model: Company, as: 'company', attributes: ['companyId', 'name'] },
+        { model: Product, as: 'product', attributes: ['productId', 'name'],
+          include: [{ model: Currency, as: 'currency', attributes: ['code', 'symbol'] }] },
+      ],
+      order: [['createdAt', 'DESC']],
+      limit,
+      offset,
+      distinct: true,
+    });
+
+    res.json({ data: rows, total: count, currentPage, totalPages: Math.ceil(count / limit) });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
 

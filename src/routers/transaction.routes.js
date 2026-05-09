@@ -10,10 +10,13 @@ import {
   createRecharge,
   createTransfert,
   createRetrait,
-   getTransactionsPaiement,
+  getTransactionsPaiement,
   getTransactionPaiementById,
   updateTransactionPaiement,
   deleteTransactionPaiement,
+  getRechargesList,
+  getRetraitsList,
+  getPaiementsList,
 } from '../controllers/transaction.controller.js';
 
 import { recharge, flexpayCallback, flexpayApproved, flexpayCancel, flexpayDecline, verifyPayment } from '../controllers/recharge.controller.js'
@@ -42,4 +45,10 @@ router.get("/transactions", getTransactionsPaiement);
 router.get("/transactions/:id", getTransactionPaiementById);
 router.put("/transactions/:id", updateTransactionPaiement);
 router.delete("/transactions/:id", deleteTransactionPaiement);
+
+// Admin lists (paginated, with period & company filters)
+router.get("/admin/recharges", authMiddleware, getRechargesList);
+router.get("/admin/retraits", authMiddleware, getRetraitsList);
+router.get("/admin/paiements", authMiddleware, getPaiementsList);
+
 export default router;

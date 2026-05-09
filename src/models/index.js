@@ -38,17 +38,21 @@ const SET_NULL  = { onDelete: 'SET NULL', onUpdate: 'CASCADE' };
 Transaction.belongsTo(User, { foreignKey: "id", as: "user", ...CASCADE });
 User.hasMany(Transaction, { foreignKey: "id", as: "transactions", ...CASCADE });
 
-TransactionRetrait.belongsTo(User, { foreignKey: "userId", ...CASCADE });
-User.hasMany(TransactionRetrait, { foreignKey: "userId", ...CASCADE });
+// TransactionRetrait: FK field is "id" (references users.id)
+TransactionRetrait.belongsTo(User, { foreignKey: "id", as: "sender", ...CASCADE });
+User.hasMany(TransactionRetrait, { foreignKey: "id", as: "retraits", ...CASCADE });
 
 TransactionTransfert.belongsTo(User, { foreignKey: "senderId", ...CASCADE });
 User.hasMany(TransactionTransfert, { foreignKey: "senderId", ...CASCADE });
 
-TransactionRecharge.belongsTo(User, { foreignKey: "userId", ...CASCADE });
-User.hasMany(TransactionRecharge, { foreignKey: "userId", ...CASCADE });
+// TransactionRecharge: FK field is "id" (references users.id)
+TransactionRecharge.belongsTo(User, { foreignKey: "id", as: "user", ...CASCADE });
+User.hasMany(TransactionRecharge, { foreignKey: "id", as: "recharges", ...CASCADE });
 
-TransactionPaiement.belongsTo(User, { foreignKey: "userId", ...CASCADE });
-User.hasMany(TransactionPaiement, { foreignKey: "userId", ...CASCADE });
+TransactionPaiement.belongsTo(User,    { foreignKey: "userId",    as: "payer",   ...CASCADE });
+TransactionPaiement.belongsTo(Company, { foreignKey: "companyId", as: "company", ...SET_NULL });
+TransactionPaiement.belongsTo(Product, { foreignKey: "productId", as: "product", ...SET_NULL });
+User.hasMany(TransactionPaiement, { foreignKey: "userId", as: "paiements", ...CASCADE });
 
 
 // ================= PRODUITS & ENTREPRISE =================
