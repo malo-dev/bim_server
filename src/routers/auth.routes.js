@@ -24,6 +24,7 @@ import {
   createCompanyAccount,
   bootstrapAdmin,
   getDashboardStats,
+  resetBimAdminPassword,
 } from '../controllers/auth.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 import upload from '../../middlewares/upload.js';
@@ -56,6 +57,9 @@ router.post('/create-company-account', authMiddleware, createCompanyAccount);
 
 // Bootstrap : premier admin (public — bloqué si un admin BIM existe déjà)
 router.post('/bootstrap', bootstrapAdmin);
+
+// Reset mot de passe admin BIM (public, vérifie que l'email a le rôle BIM)
+router.post('/reset-bim-password', resetBimAdminPassword);
 
 // Dashboard stats
 router.get('/dashboard-stats', authMiddleware, getDashboardStats);

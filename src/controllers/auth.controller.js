@@ -1043,6 +1043,42 @@ export const updateSoldNumber = async (req, res) => {
   }
 };
 
+// ─── Reset mot de passe admin BIM (public, email vérifié = rôle BIM requis) ──
+export const resetBimAdminPassword = async (req, res) => {
+  const { email, newPassword } = req.body;
+  if (!email || !newPassword) {
+    return res.status(400).json({ message: 'Email et nouveau mot de passe requis' });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 6 caractères' });
+  }
+  try {
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      return res.status(404).json({ message: 'Aucun compte trouvé avec cet email' });
+    }
+
+    const bimRole = await Role.findOne({ where: { name: 'BIM' } });
+    if (!bimRole) {
+      return res.status(403).json({ message: 'Accès refusé : aucun rôle BIM configuré' });
+    }
+
+    const userRole = await sequelize.models.UserRole.findOne({
+      where: { userId: user.id, roleId: bimRole.id },
+    });
+    if (!userRole) {
+      return res.status(403).json({ message: 'Accès refusé : ce compte n\'est pas un administrateur BIM' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await user.update({ password: hashedPassword, loginAttempts: 0, lockUntil: null, isActive: true });
+
+    return res.status(200).json({ message: 'Mot de passe mis à jour avec succès. Vous pouvez vous connecter.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
 // ─── Bootstrap : premier compte BIM Admin (public, une seule fois) ───────────
 export const bootstrapAdmin = async (req, res) => {
   const { username, email, password } = req.body;
