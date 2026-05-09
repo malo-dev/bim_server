@@ -55,11 +55,11 @@ export const getAllNotes = async (req, res) => {
     const findOptions = {
       where: whereClause,
       order: [['createdAt', 'DESC']],
-    //   include: [
-    //     { model: User,    as: 'user',    attributes: ['id', 'username', 'email'] },
-    //     { model: Product, as: 'product', attributes: ['productId', 'name', 'price'] },
-    //     { model: Company, as: 'company', attributes: ['companyId', 'name'] },
-    //   ],
+      include: [
+        { model: User,    as: 'user',    attributes: ['id', 'username', 'email'] },
+        { model: Product, as: 'product', attributes: ['productId', 'name', 'price'] },
+        { model: Company, as: 'company', attributes: ['companyId', 'name'] },
+      ],
     };
 
     if (isPaginate) {

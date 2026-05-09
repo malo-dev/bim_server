@@ -12,6 +12,10 @@ const UserRole = sequelize.define(
       type: DataTypes.INTEGER,
       primaryKey: true,
     },
+    companyId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
   },
   {
     tableName: 'UserRoles',

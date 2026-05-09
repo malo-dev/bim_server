@@ -202,6 +202,11 @@ Notification.belongsTo(BranchTrack, { foreignKey: 'branchTrackId', ...CASCADE })
 
 // ================= EXPORT =================
 
+// ================= SUPPORT ================
+
+SupportTrack.belongsTo(User, { foreignKey: 'id', as: 'user', ...CASCADE });
+User.hasMany(SupportTrack, { foreignKey: 'id', as: 'supportTracks', ...CASCADE });
+
 // ================= ORDERS =================
 
 Order.belongsTo(User,    { foreignKey: 'userId',    as: 'user',    ...SET_NULL });

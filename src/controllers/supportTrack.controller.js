@@ -1,4 +1,4 @@
-import {  SupportTrack } from '../models/index.js';
+import { SupportTrack, User } from '../models/index.js';
 import { getDateRangeByPeriod } from '../utils/getDateRangeByPeriod.util.js';
 import nodemailer from 'nodemailer';
 import { Op } from 'sequelize';
@@ -66,12 +66,10 @@ export const getAllSupportTracks = async (req, res) => {
 
     const findOptions = {
       where: whereClause,
-      order: [['createdAt', 'ASC']],
-      // include: [
-      //   { model: Currency, as: 'currency' },
-      //   { model: Category, as: 'categories', through: { attributes: [] } },
-      //   { model: SupportTrackSold, as: 'SupportTrackSold' },
-      // ],
+      order: [['createdAt', 'DESC']],
+      include: [
+        { model: User, as: 'user', attributes: ['id', 'username', 'email'] },
+      ],
     };
 
     if (isPaginate) {
@@ -201,34 +199,24 @@ export const updateSupportTrack = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const SupportTrack = await SupportTrack.findByPk(id);
-    if (!SupportTrack) {
-      return res.status(404).json({ message: 'SupportTrack not found' });
+    const record = await SupportTrack.findByPk(id);
+    if (!record) {
+      return res.status(404).json({ message: 'Ticket introuvable' });
     }
 
-    let imageUrl = SupportTrack.imageUrl;
+    let imageUrl = record.imageUrl;
 
     if (req.file) {
-      if (SupportTrack.imageUrl) {
-        const oldImagePath = path.join('public', SupportTrack.imageUrl.replace('/images/', 'images/'));
-
-        if (fs.existsSync(oldImagePath)) {
-          fs.unlinkSync(oldImagePath);
-        }
+      if (record.imageUrl) {
+        const oldImagePath = path.join('public', record.imageUrl.replace('/images/', 'images/'));
+        if (fs.existsSync(oldImagePath)) fs.unlinkSync(oldImagePath);
       }
-
       imageUrl = `/images/${req.file.filename}`;
     }
 
-    await SupportTrack.update({
-      ...req.body,
-      imageUrl,
-    });
+    await record.update({ ...req.body, imageUrl });
 
-    res.status(200).json({
-      message: 'SupportTrack updated successfully',
-      data: SupportTrack,
-    });
+    res.status(200).json({ message: 'Ticket mis à jour', data: record });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -237,21 +225,18 @@ export const updateSupportTrack = async (req, res) => {
 export const deleteSupportTrack = async (req, res) => {
   try {
     const { id } = req.params;
-    const SupportTrack = await SupportTrack.findByPk(id);
+    const record = await SupportTrack.findByPk(id);
 
-    if (!SupportTrack) {
-      return res.status(404).json({ message: 'SupportTrack not found' });
+    if (!record) {
+      return res.status(404).json({ message: 'Ticket introuvable' });
     }
-    if (SupportTrack.imageUrl) {
-      const imagePath = path.join('public', SupportTrack.imageUrl.replace('/images/', 'images/'));
-
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
+    if (record.imageUrl) {
+      const imagePath = path.join('public', record.imageUrl.replace('/images/', 'images/'));
+      if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
     }
-    await SupportTrack.destroy();
+    await record.destroy();
 
-    res.status(200).json({ message: 'SupportTrack and its image deleted successfully' });
+    res.status(200).json({ message: 'Ticket supprimé avec succès' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

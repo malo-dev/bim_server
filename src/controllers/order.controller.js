@@ -1,5 +1,6 @@
 import { Op } from "sequelize";
 import { Order, User, Company, Product, Currency } from "../models/index.js";
+import sequelize from "../config/database.js";
 
 export const getOrders = async (req, res) => {
   try {
@@ -100,6 +101,40 @@ export const deleteOrder = async (req, res) => {
     if (!order) return res.status(404).json({ message: "Commande introuvable" });
     await order.destroy();
     res.json({ message: "Commande supprimée avec succès" });
+  } catch (error) {
+    res.status(500).json({ message: "Erreur serveur", error: error.message });
+  }
+};
+
+// Commandes de l'entreprise du company admin connecté
+export const getCompanyOrders = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const userRoleRecord = await sequelize.models.UserRole.findOne({ where: { userId } });
+    const companyId = userRoleRecord?.companyId;
+    if (!companyId) return res.status(403).json({ message: "Aucune entreprise associée à ce compte" });
+
+    const { status, startDate, endDate, search, page = 1, pageSize = 20 } = req.query;
+    const limit = parseInt(pageSize, 10);
+    const currentPage = parseInt(page, 10);
+    const offset = (currentPage - 1) * limit;
+
+    const where = { companyId };
+    if (status) where.status = status;
+    if (startDate && endDate) where.createdAt = { [Op.between]: [new Date(startDate), new Date(endDate)] };
+    if (search) where[Op.or] = [{ orderNumber: { [Op.like]: `%${search}%` } }, { shippingAddress: { [Op.like]: `%${search}%` } }];
+
+    const include = [
+      { model: User, as: "user", attributes: ["id", "username", "email"] },
+      { model: Company, as: "company", attributes: ["companyId", "name"] },
+      { model: Product, as: "product", attributes: ["productId", "name", "price"],
+        include: [{ model: Currency, as: "currency", attributes: ["code", "symbol"] }] },
+    ];
+
+    const { rows, count } = await Order.findAndCountAll({
+      where, include, order: [["createdAt", "DESC"]], limit, offset, distinct: true,
+    });
+    return res.json({ data: rows, total: count, currentPage, totalPages: Math.ceil(count / limit) });
   } catch (error) {
     res.status(500).json({ message: "Erreur serveur", error: error.message });
   }

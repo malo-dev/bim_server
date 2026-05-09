@@ -178,6 +178,16 @@ const login = async (req, res) => {
 
     await user.update({ refreshToken, Token: token, loginAttempts: 0, lockUntil: null });
 
+    // Récupération du rôle réel et du companyId
+    const userRoleRecord = await sequelize.models.UserRole.findOne({ where: { userId: user.id } });
+    let roleName = null;
+    let companyId = null;
+    if (userRoleRecord) {
+      const roleRecord = await Role.findByPk(userRoleRecord.roleId);
+      roleName = roleRecord?.name ?? null;
+      companyId = userRoleRecord.companyId ?? null;
+    }
+
     // Email alerte connexion (fire & forget)
     try {
       const transporter = nodemailer.createTransport({
@@ -201,7 +211,8 @@ const login = async (req, res) => {
       token,
       refreshToken,
       status: user.isActive,
-      role: user.role,
+      role: roleName,
+      companyId,
       userId: user.id,
     });
   } catch (error) {
@@ -1322,7 +1333,7 @@ export const createCompanyAccount = async (req, res) => {
     });
 
     await sequelize.models.UserRole.create(
-      { userId: newUser.id, roleId: companyRole.id },
+      { userId: newUser.id, roleId: companyRole.id, companyId: newCompany.companyId },
       { transaction: t }
     );
 
@@ -1380,7 +1391,7 @@ export const addCompanyAdmin = async (req, res) => {
     });
 
     await sequelize.models.UserRole.create(
-      { userId: newUser.id, roleId: companyRole.id },
+      { userId: newUser.id, roleId: companyRole.id, companyId: parseInt(companyId, 10) },
       { transaction: t }
     );
 
