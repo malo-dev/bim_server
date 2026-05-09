@@ -1,6 +1,7 @@
 import { Op } from "sequelize";
-import { Order, User, Company, Product, Currency } from "../models/index.js";
+import { Order, User, Company, Product, Currency, TransactionPaiement } from "../models/index.js";
 import sequelize from "../config/database.js";
+import { getDateRangeByPeriod } from "../utils/getDateRangeByPeriod.util.js";
 
 export const getOrders = async (req, res) => {
   try {
@@ -135,6 +136,55 @@ export const getCompanyOrders = async (req, res) => {
       where, include, order: [["createdAt", "DESC"]], limit, offset, distinct: true,
     });
     return res.json({ data: rows, total: count, currentPage, totalPages: Math.ceil(count / limit) });
+  } catch (error) {
+    res.status(500).json({ message: "Erreur serveur", error: error.message });
+  }
+};
+
+// Statistiques agrégées (commandes + paiements) pour la company admin connectée
+export const getMyCompanyStats = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const userRoleRecord = await sequelize.models.UserRole.findOne({ where: { userId } });
+    const companyId = userRoleRecord?.companyId;
+    if (!companyId) return res.status(403).json({ message: "Aucune entreprise associée à ce compte" });
+
+    const { period } = req.query;
+    const createdAtFilter = {};
+    if (period) {
+      const from = getDateRangeByPeriod(period);
+      if (from) createdAtFilter.createdAt = { [Op.gte]: from };
+    }
+
+    const [orderStats, paymentStats] = await Promise.all([
+      Order.findOne({
+        where: { companyId, ...createdAtFilter },
+        attributes: [
+          [sequelize.fn("COUNT", sequelize.col("orderId")), "count"],
+          [sequelize.fn("SUM", sequelize.col("totalAmount")), "totalAmount"],
+        ],
+        raw: true,
+      }),
+      TransactionPaiement.findOne({
+        where: { companyId, ...createdAtFilter },
+        attributes: [
+          [sequelize.fn("COUNT", sequelize.col("transactionPaiementId")), "count"],
+          [sequelize.fn("SUM", sequelize.col("amount")), "totalAmount"],
+        ],
+        raw: true,
+      }),
+    ]);
+
+    return res.json({
+      orders: {
+        count: parseInt(orderStats?.count ?? 0),
+        totalAmount: parseFloat(orderStats?.totalAmount ?? 0) || 0,
+      },
+      payments: {
+        count: parseInt(paymentStats?.count ?? 0),
+        totalAmount: parseFloat(paymentStats?.totalAmount ?? 0) || 0,
+      },
+    });
   } catch (error) {
     res.status(500).json({ message: "Erreur serveur", error: error.message });
   }
