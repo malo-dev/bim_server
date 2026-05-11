@@ -5,7 +5,7 @@ import { Op }    from 'sequelize';
 import { User, Notification, Transaction, History, TransactionRecharge } from '../models/index.js';
 import { generateSupportReceivedEmailTemplateRecharge } from '../utils/templateMails.util.js';
 import { generateReferenceRecharge } from '../utils/generateReferenceSecond.js';
-import nodemailer from 'nodemailer';
+import { mailer } from '../utils/sendEmail.utils.js';
 import sequelize  from '../config/database.js';
 
 /* ─── CONFIG ────────────────────────────────────────────────────────── */
@@ -250,18 +250,9 @@ export const recharge = async (req, res) => {
           amount:   montantCredite,
         });
 
-        const transporter = nodemailer.createTransport({
-          host:           "mail.bimreseau.com",
-          port:           465,
-          secure:         true,
-          auth:           { user: "noreply@bimreseau.com", pass: process.env.EMAIL_PASSWORD },
-          pool:           true,
-          maxConnections: 3,
-        });
-
         const recipients = [userItem.email, ownerItem?.email].filter(Boolean).join(", ");
 
-        await transporter.sendMail({
+        await mailer.sendMail({
           from:    "noreply@bimreseau.com",
           to:      recipients,
           subject: `Recharge de ${amount} EC effectuée le ${new Date().toLocaleDateString()} à ${new Date().toLocaleTimeString()}`,

@@ -176,13 +176,8 @@ BranchTrack.belongsTo(User, {
 
 // ================= HISTORY =================
 
-History.hasMany(User, { foreignKey: 'id', as: 'userIdTrack', ...CASCADE });
-
-User.belongsTo(History, {
-  foreignKey: 'id',
-  as: 'historyTrack',
-  ...CASCADE
-});
+History.belongsTo(User, { foreignKey: 'userId', as: 'user', ...CASCADE });
+User.hasMany(History, { foreignKey: 'userId', as: 'histories', ...CASCADE });
 
 
 // ================= NOTIFICATIONS =================

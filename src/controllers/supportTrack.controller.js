@@ -1,6 +1,6 @@
 import { SupportTrack, User } from '../models/index.js';
 import { getDateRangeByPeriod } from '../utils/getDateRangeByPeriod.util.js';
-import nodemailer from 'nodemailer';
+import { mailer } from '../utils/sendEmail.utils.js';
 import { Op } from 'sequelize';
 import path from 'path';
 import fs from 'fs';
@@ -137,22 +137,11 @@ export const createSupportTrack = async (req, res) => {
 
     const imageUrl = req.file ? `/images/${req.file.filename}` : null;
 
-    const transporter = nodemailer.createTransport({
-      host: 'mail.bimreseau.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: 'noreply@bimreseau.com',
-        // eslint-disable-next-line no-undef
-        pass: process.env.EMAIL_PASSWORD,
-      },
-    });
-
 
 
 
     try {
-    await transporter.sendMail({
+    await mailer.sendMail({
       from: 'noreply@bimreseau.com',
       to: req.body.email,
       subject: "Ticket support reçu - BIM NEXT",

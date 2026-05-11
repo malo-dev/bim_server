@@ -6,7 +6,7 @@ import axios from "axios";
 import dotenv from 'dotenv';
 import { generateSupportReceivedEmailTemplate, generateSupportReceivedEmailTemplatePaiement,generateSupportReceivedEmailTemplateTransfert } from '../utils/templateMails.util.js';
 import sequelize from '../config/database.js';
-import nodemailer from 'nodemailer';
+import { mailer } from '../utils/sendEmail.utils.js';
 import jwt from "jsonwebtoken";
 import { generateReferenceRecharge } from '../utils/generateReferenceSecond.js';
 import { sendPushNotification } from '../services/pushNotification.service.js';
@@ -325,14 +325,7 @@ export const createRetrait = async (req, res) => {
       `Retrait de ${retraitAmount}$ effectué avec succès (Frais: ${fraisTotal}$).`
     );
 
-    const transporter = nodemailer.createTransport({
-      host: "mail.bimreseau.com",
-      port: 465,
-      secure: true,
-      auth: { user: "noreply@bimreseau.com", pass: process.env.EMAIL_PASSWORD },
-    });
-
-    await transporter.sendMail({
+    await mailer.sendMail({
       from: "noreply@bimreseau.com",
       to: `${userSender.email}, ${userAgent.email}`,
       subject: `Un retrait de ${retraitAmount}$ a été effectué avec succès le ${new Date().toLocaleDateString()} à ${new Date().toLocaleTimeString()}.`,
@@ -633,14 +626,6 @@ export const createTransfert = async (req, res) => {
 
     /* ── 14. Emails fire & forget (après commit + réponse) ── */
     try {
-      const transporter = nodemailer.createTransport({
-        host:           "mail.bimreseau.com",
-        port:           465,
-        secure:         true,
-        auth:           { user: "noreply@bimreseau.com", pass: process.env.EMAIL_PASSWORD },
-        pool:           true,
-        maxConnections: 3,
-      });
 
       const htmlSender = generateSupportReceivedEmailTemplateTransfert({
         username:     sender.username   || "Utilisateur",
@@ -661,11 +646,11 @@ export const createTransfert = async (req, res) => {
       });
 
       await Promise.all([
-        transporter.sendMail({
+        mailer.sendMail({
           from: "noreply@bimreseau.com", to: sender.email,
           subject: "Transfert envoyé", html: htmlSender,
         }),
-        transporter.sendMail({
+        mailer.sendMail({
           from: "noreply@bimreseau.com", to: receiver.email,
           subject: "Fonds reçus", html: htmlReceiver,
         }),
@@ -1150,16 +1135,7 @@ export const createPaiement = async (req, res) => {
         productName:   product?.name || "",
       });
 
-      const transporter = nodemailer.createTransport({
-        host:           "mail.bimreseau.com",
-        port:           465,
-        secure:         true,
-        auth:           { user: "noreply@bimreseau.com", pass: process.env.EMAIL_PASSWORD },
-        pool:           true,
-        maxConnections: 3,
-      });
-
-      await transporter.sendMail({
+      await mailer.sendMail({
         from:    "noreply@bimreseau.com",
         to:      `${sender.email}, ${ownerItem.email}, ${company.email}`,
         subject: "Paiement réussi - BIM",

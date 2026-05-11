@@ -5,7 +5,7 @@ import { User, Role, BranchTrack, Commerce, Company, BusinessCategory, Order, Tr
 import sequelize from '../config/database.js';
 import { Op } from 'sequelize';
 import crypto from 'crypto';
-import nodemailer from 'nodemailer';
+import { mailer } from '../utils/sendEmail.utils.js';
 import path from 'path';
 import fs from 'fs';
 import { generateNewLoginAlertEmailTemplate,generateTransactionPasswordEmailTemplate, generateOtpEmailTemplate, generateOtpEmailTemplateActivated } from '../utils/templateMails.util.js';
@@ -37,19 +37,8 @@ const register = async (req, res) => {
       accountNumber: String(generateAccountNumber())
     });
 
-   
-    const transporter = nodemailer.createTransport({
-      host: 'mail.bimreseau.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: 'noreply@bimreseau.com',
-        pass: process.env.EMAIL_PASSWORD,
-      },
-    });
-
     
-    await transporter.sendMail({
+    await mailer.sendMail({
       from: 'noreply@bimreseau.com',
       to: email,
       subject: 'Activation de votre compte Bim',
@@ -90,19 +79,8 @@ const createAgent = async (req, res) => {
       accountNumber: String(generateAccountNumberAgent())
     });
 
-   
-    const transporter = nodemailer.createTransport({
-      host: 'mail.bimreseau.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: 'noreply@bimreseau.com',
-        pass: process.env.EMAIL_PASSWORD,
-      },
-    });
-
     
-    await transporter.sendMail({
+    await mailer.sendMail({
       from: 'noreply@bimreseau.com',
       to: email,
       subject: 'Activation de votre compte Bim',
@@ -190,13 +168,7 @@ const login = async (req, res) => {
 
     // Email alerte connexion (fire & forget)
     try {
-      const transporter = nodemailer.createTransport({
-        host: 'mail.bimreseau.com',
-        port: 465,
-        secure: true,
-        auth: { user: 'noreply@bimreseau.com', pass: process.env.EMAIL_PASSWORD },
-      });
-      await transporter.sendMail({
+      await mailer.sendMail({
         from: 'noreply@bimreseau.com',
         to: email,
         subject: 'Alerte de sécurité – Connexion détectée sur votre compte BIM NEXT',
@@ -273,19 +245,8 @@ const askPasswordReset = async (req, res) => {
         { where: { id: user.id } }
       );
 
-         
-    const transporter = nodemailer.createTransport({
-      host: 'mail.bimreseau.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: 'noreply@bimreseau.com',
-        pass: process.env.EMAIL_PASSWORD,
-      },
-    });
-
     
-    await transporter.sendMail({
+    await mailer.sendMail({
       from: 'noreply@bimreseau.com',
       to: email,
       subject: 'Activation de votre compte Bim',
@@ -442,7 +403,7 @@ const getAllUsers = async (req, res) => {
       });
     }
 
-    const users = await User.findAll(queryOptions);
+    const users = await User.findAll({ ...queryOptions, limit: 1000 });
 
     return res.status(200).json({
       message: 'Requête passée avec succès',
@@ -633,19 +594,9 @@ const desactivateUser = async (req, res) => {
 
     if (isActiveUser) {
       await User.update({ isActive: false }, { where: { id: user.id } });
-    
-       const transporter = nodemailer.createTransport({
-      host: 'mail.bimreseau.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: 'noreply@bimreseau.com',
-        pass: process.env.EMAIL_PASSWORD,
-      },
-    });
 
     
-    await transporter.sendMail({
+    await mailer.sendMail({
       from: 'noreply@bimreseau.com',
       to: email,
       subject: 'Activation de votre compte Bim',
@@ -756,36 +707,31 @@ const getMe = async (req, res) => {
   }
 
   try {
-    const createdUsers = [];
+    // Récupérer les emails déjà existants en une seule requête
+    const emails = users.map((u) => u.email);
+    const existing = await User.findAll({ where: { email: emails }, attributes: ['email'] });
+    const existingEmails = new Set(existing.map((u) => u.email));
 
-    for (const userData of users) {
-      const { username, email, password } = userData;
+    // Filtrer et hasher les mots de passe en parallèle
+    const newUsersData = await Promise.all(
+      users
+        .filter((u) => !existingEmails.has(u.email))
+        .map(async ({ username, email, password }) => ({
+          username,
+          email,
+          password: await bcrypt.hash(password, 10),
+        }))
+    );
 
-      const existingUser = await User.findOne({ where: { email } });
-      if (existingUser) {
-        continue; 
-      }
-
-      // Hash du mot de passe
-      const hashedPassword = await bcrypt.hash(password, 10);
-
-      // Création de l'utilisateur
-      const newUser = await User.create({
-        username,
-        email,
-        password: hashedPassword,
-      });
-
-      createdUsers.push({
-        id: newUser.id,
-        username: newUser.username,
-        email: newUser.email,
-      });
+    if (newUsersData.length === 0) {
+      return res.status(200).json({ message: "Tous les utilisateurs existent déjà.", users: [] });
     }
+
+    const created = await User.bulkCreate(newUsersData, { returning: true });
 
     res.status(201).json({
       message: "Utilisateurs créés avec succès",
-      users: createdUsers,
+      users: created.map((u) => ({ id: u.id, username: u.username, email: u.email })),
     });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
@@ -832,20 +778,11 @@ const verifyOtp = async (req, res) => {
 
     const pwd = generatePassword6Digits()
   const hashedPassword = await bcrypt.hash(pwd, 10);
-     const transporter = nodemailer.createTransport({
-      host: 'mail.bimreseau.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: 'noreply@bimreseau.com',
-        pass: process.env.EMAIL_PASSWORD,
-      },
-     });
     
 const dateTime = getFormattedDateTime();
 
     
-    await transporter.sendMail({
+    await mailer.sendMail({
       from: 'noreply@bimreseau.com',
       to: user.email,
       subject: `Votre mot de passe de transaction BIM NEXT 🔐 — Créé le ${dateTime}`,
@@ -1006,16 +943,8 @@ const deleteAccount = async (req, res) => {
 
     /* ── 6. Email de confirmation (fire & forget) ── */
     try {
-      const transporter = nodemailer.createTransport({
-        host:    'mail.bimreseau.com',
-        port:    465,
-        secure:  true,
-        auth:    { user: 'noreply@bimreseau.com', pass: process.env.EMAIL_PASSWORD },
-        pool:    true,
-        maxConnections: 3,
-      });
 
-      await transporter.sendMail({
+      await mailer.sendMail({
         from:    'noreply@bimreseau.com',
         to:      email,
         subject: 'Confirmation de suppression de votre compte BIM NEXT',
@@ -1086,14 +1015,7 @@ export const requestBimReset = async (req, res) => {
 
     await user.update({ otp, otpExpires });
 
-    const transporter = nodemailer.createTransport({
-      host: 'mail.bimreseau.com',
-      port: 465,
-      secure: true,
-      auth: { user: 'noreply@bimreseau.com', pass: process.env.EMAIL_PASSWORD },
-    });
-
-    await transporter.sendMail({
+    await mailer.sendMail({
       from: 'noreply@bimreseau.com',
       to: email,
       subject: 'BIM Admin — Code de réinitialisation',
