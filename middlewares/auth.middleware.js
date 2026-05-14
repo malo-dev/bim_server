@@ -47,7 +47,7 @@ const authMiddleware = async (req, res, next) => {
         description: isSuccess
           ? `${label} effectuée avec succès.`
           : `Échec lors de ${label.toLowerCase()}.`,
-        id: req.user.id,
+        userId: req.user.id,
         action: isSuccess ? `${label} ✅` : `${label} ❌`,
       });
 
