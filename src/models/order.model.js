@@ -31,13 +31,13 @@ const Order = sequelize.define(
 
     companyId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: "companies",
         key: "companyId",
       },
       onUpdate: "CASCADE",
-      onDelete: "RESTRICT",
+      onDelete: "SET NULL",
     },
 
     productId: {

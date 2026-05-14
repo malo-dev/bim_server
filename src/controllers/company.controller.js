@@ -1,4 +1,4 @@
-import { Company, BusinessCategory,Product} from '../models/index.js';
+import { Company, BusinessCategory, Product, Order } from '../models/index.js';
 import { getDateRangeByPeriod } from '../utils/getDateRangeByPeriod.util.js';
 import { Op } from 'sequelize';
 import path from 'path';
@@ -306,6 +306,9 @@ export const deleteCompany = async (req, res) => {
         fs.unlinkSync(imagePath);
       }
     }
+
+    // Détache les commandes liées avant suppression (évite la contrainte FK)
+    await Order.update({ companyId: null }, { where: { companyId: id } });
 
     await company.destroy();
 
