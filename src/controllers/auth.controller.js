@@ -1511,6 +1511,169 @@ export const deleteMyCompanyAdmin = async (req, res) => {
   }
 };
 
+// ─── Liste des OTPs des utilisateurs ─────────────────────────────────────────
+export const getOtps = async (req, res) => {
+  try {
+    const { page = 1, pageSize = 20, status, period } = req.query;
+    const limit = parseInt(pageSize, 10);
+    const offset = (parseInt(page, 10) - 1) * limit;
+
+    const where = {
+      email: { [Op.ne]: 'bimbank@bimreseau.com' },
+      otp: { [Op.ne]: null },
+    };
+
+    const now = new Date();
+
+    if (status === 'active') {
+      where.otpExpires = { [Op.gt]: now };
+    } else if (status === 'expired') {
+      where.otpExpires = { [Op.lte]: now };
+    }
+
+    if (period) {
+      const periodStart = getDateRangeByPeriod(period);
+      if (periodStart) {
+        where.createdAt = { [Op.gte]: periodStart };
+      }
+    }
+
+    const { rows, count } = await User.findAndCountAll({
+      where,
+      attributes: ['id', 'username', 'fullname', 'email', 'otp', 'otpExpires', 'createdAt'],
+      order: [['createdAt', 'DESC']],
+      limit,
+      offset,
+    });
+
+    const data = rows.map((u) => ({
+      id: u.id,
+      user: { id: u.id, username: u.username, email: u.email },
+      otp: u.otp,
+      code: u.otp,
+      expiresAt: u.otpExpires,
+      createdAt: u.createdAt,
+      status: u.otpExpires && u.otpExpires > now ? 'active' : 'expired',
+      type: 'activation',
+    }));
+
+    return res.status(200).json({
+      data,
+      pagination: { total: count, page: parseInt(page, 10), pageSize: limit, totalPages: Math.ceil(count / limit) },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// ─── Statistiques de solde des utilisateurs ───────────────────────────────────
+export const getUsersBalanceStats = async (req, res) => {
+  try {
+    const { period, createdAtFrom, createdAtTo } = req.query;
+
+    const where = {
+      email: { [Op.ne]: 'bimbank@bimreseau.com' },
+    };
+
+    if (period) {
+      const periodStart = getDateRangeByPeriod(period);
+      if (periodStart) where.createdAt = { [Op.gte]: periodStart };
+    } else if (createdAtFrom || createdAtTo) {
+      const dateWhere = {};
+      if (createdAtFrom) dateWhere[Op.gte] = new Date(createdAtFrom);
+      if (createdAtTo) {
+        const end = new Date(createdAtTo);
+        end.setHours(23, 59, 59, 999);
+        dateWhere[Op.lte] = end;
+      }
+      where.createdAt = dateWhere;
+    }
+
+    const [totalBalance, totalUsers, activeUsers] = await Promise.all([
+      User.sum('soldNumber', { where }),
+      User.count({ where }),
+      User.count({ where: { ...where, isActive: true } }),
+    ]);
+
+    return res.status(200).json({
+      totalBalance: totalBalance ?? 0,
+      totalUsers,
+      activeUsers,
+      period: period || 'all',
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// ─── Mot de passe de transaction d'un utilisateur ────────────────────────────
+export const getTransactionPassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findByPk(id, {
+      attributes: ['id', 'username', 'email', 'randomly'],
+    });
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+    return res.status(200).json({
+      userId: user.id,
+      username: user.username,
+      randomly: user.randomly,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// ─── Recharge admin d'un compte utilisateur ──────────────────────────────────
+export const adminRechargeUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount } = req.body;
+
+    if (!amount || isNaN(amount) || Number(amount) <= 0) {
+      return res.status(400).json({ message: 'Montant invalide' });
+    }
+
+    const user = await User.findByPk(id);
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+    const current = parseFloat(user.soldNumber ?? 0);
+    const newBalance = current + parseFloat(amount);
+
+    await user.update({ soldNumber: newBalance });
+
+    return res.status(200).json({
+      message: `${amount} EC ajoutés au compte de ${user.username}`,
+      previousBalance: current,
+      newBalance,
+      userId: user.id,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// ─── Réinitialisation du mot de passe d'un utilisateur par l'admin ───────────
+export const adminResetUserPassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findByPk(id);
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+    const newPassword = generatePassword6Digits();
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await user.update({ password: hashed });
+
+    return res.status(200).json({
+      message: `Mot de passe réinitialisé pour ${user.username}`,
+      newPassword,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
 export {
   register,
   login,

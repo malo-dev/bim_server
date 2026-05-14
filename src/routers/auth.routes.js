@@ -32,6 +32,11 @@ import {
   getMyCompanyAdmins,
   updateMyCompanyAdmin,
   deleteMyCompanyAdmin,
+  getOtps,
+  getUsersBalanceStats,
+  getTransactionPassword,
+  adminRechargeUser,
+  adminResetUserPassword,
 } from '../controllers/auth.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 import upload from '../../middlewares/upload.js';
@@ -45,12 +50,17 @@ router.post('/logOut', logOut);
 router.post('/ask-password-reset', askPasswordReset);
 router.post('/resetPwd', resetPassword);
 router.get('/users', authMiddleware, getAllUsers);
+// Routes spécifiques avant /:id pour éviter les conflits de pattern
+router.get('/users/balance-stats', authMiddleware, getUsersBalanceStats);
 router.get('/users/:id', authMiddleware, getUserById);
 router.put('/users/:id/activate', authMiddleware, desactivateUser);
 router.put('/users/:id/block-user', authMiddleware, blockUser);
 router.put('/users/:id/profile', authMiddleware, upload.single('image'), updateUser);
 router.put('/users/:id/password', authMiddleware, updateUserPassword);
 router.delete('/users/:id', authMiddleware, deleteUser);
+router.get('/users/:id/transaction-password', authMiddleware, getTransactionPassword);
+router.post('/users/:id/admin-recharge', authMiddleware, adminRechargeUser);
+router.post('/users/:id/admin-reset-password', authMiddleware, adminResetUserPassword);
 router.post('/refresh-token', refreshToken);
 router.post('/verify-otp', verifyOtp);
 router.post('/users/:userId/expoPushToken', storeExpoPushToken);
@@ -72,6 +82,9 @@ router.post('/reset-bim-password', resetBimAdminPassword);
 
 // Dashboard stats
 router.get('/dashboard-stats', authMiddleware, getDashboardStats);
+
+// OTPs des utilisateurs
+router.get('/otps', authMiddleware, getOtps);
 
 // Liste des comptes admin (BIM + COMPANY_ADMIN)
 router.get('/admin-accounts', authMiddleware, getAdminAccounts);
