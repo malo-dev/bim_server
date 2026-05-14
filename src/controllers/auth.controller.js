@@ -11,6 +11,7 @@ import fs from 'fs';
 import { generateNewLoginAlertEmailTemplate,generateTransactionPasswordEmailTemplate, generateOtpEmailTemplate, generateOtpEmailTemplateActivated } from '../utils/templateMails.util.js';
 import { generateAccountNumber,generateAccountNumberAgent} from '../utils/generateAccountNumber.util.js';
 import { generatePassword6Digits,getFormattedDateTime} from '../utils/calculFrais.util.js';
+import { getDateRangeByPeriod } from '../utils/getDateRangeByPeriod.util.js';
 const generateOtp = () => {
   return Math.floor(100000 + Math.random() * 900000).toString(); // OTP 6 chiffres
 };
@@ -1120,7 +1121,6 @@ export const getDashboardStats = async (req, res) => {
 
     let periodStart = null;
     if (period) {
-      const { getDateRangeByPeriod } = await import('../utils/getDateRangeByPeriod.util.js');
       periodStart = getDateRangeByPeriod(period);
     }
 
