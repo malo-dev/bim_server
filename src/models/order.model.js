@@ -37,7 +37,7 @@ const Order = sequelize.define(
         key: "companyId",
       },
       onUpdate: "CASCADE",
-      onDelete: "SET NULL",
+      onDelete: "RESTRICT",
     },
 
     productId: {

@@ -205,7 +205,7 @@ User.hasMany(SupportTrack, { foreignKey: 'id', as: 'supportTracks', ...CASCADE }
 // ================= ORDERS =================
 
 Order.belongsTo(User,    { foreignKey: 'userId',    as: 'user',    ...SET_NULL });
-Order.belongsTo(Company, { foreignKey: 'companyId', as: 'company', ...SET_NULL });
+Order.belongsTo(Company, { foreignKey: 'companyId', as: 'company', ...CASCADE  });
 Order.belongsTo(Product, { foreignKey: 'productId', as: 'product', ...CASCADE  });
 
 User.hasMany(Order,    { foreignKey: 'userId',    as: 'orders' });
