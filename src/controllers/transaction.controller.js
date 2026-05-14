@@ -1399,16 +1399,24 @@ export const getRechargesList = async (req, res) => {
       ];
     }
 
-    const { rows, count } = await TransactionRecharge.findAndCountAll({
-      where,
-      include: [{ model: User, as: 'user', attributes: ['id', 'username', 'email'] }],
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset,
-      distinct: true,
-    });
+    const [{ rows, count }, sumResult] = await Promise.all([
+      TransactionRecharge.findAndCountAll({
+        where,
+        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'email'] }],
+        order: [['createdAt', 'DESC']],
+        limit,
+        offset,
+        distinct: true,
+      }),
+      TransactionRecharge.findOne({
+        where,
+        attributes: [[sequelize.fn('SUM', sequelize.col('amount')), 'total']],
+        raw: true,
+      }),
+    ]);
 
-    res.json({ data: rows, total: count, currentPage, totalPages: Math.ceil(count / limit) });
+    const totalAmount = parseFloat(sumResult?.total ?? 0) || 0;
+    res.json({ data: rows, total: count, currentPage, totalPages: Math.ceil(count / limit), totalAmount });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
@@ -1431,16 +1439,24 @@ export const getRetraitsList = async (req, res) => {
       where.createdAt = { [Op.between]: [new Date(startDate), new Date(endDate)] };
     }
 
-    const { rows, count } = await TransactionRetrait.findAndCountAll({
-      where,
-      include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'email'] }],
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset,
-      distinct: true,
-    });
+    const [{ rows, count }, sumResult] = await Promise.all([
+      TransactionRetrait.findAndCountAll({
+        where,
+        include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'email'] }],
+        order: [['createdAt', 'DESC']],
+        limit,
+        offset,
+        distinct: true,
+      }),
+      TransactionRetrait.findOne({
+        where,
+        attributes: [[sequelize.fn('SUM', sequelize.col('amount')), 'total']],
+        raw: true,
+      }),
+    ]);
 
-    res.json({ data: rows, total: count, currentPage, totalPages: Math.ceil(count / limit) });
+    const totalAmount = parseFloat(sumResult?.total ?? 0) || 0;
+    res.json({ data: rows, total: count, currentPage, totalPages: Math.ceil(count / limit), totalAmount });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
@@ -1468,21 +1484,29 @@ export const getPaiementsList = async (req, res) => {
       where[Op.or] = [{ description: { [Op.like]: `%${search}%` } }];
     }
 
-    const { rows, count } = await TransactionPaiement.findAndCountAll({
-      where,
-      include: [
-        { model: User, as: 'payer', attributes: ['id', 'username', 'email'] },
-        { model: Company, as: 'company', attributes: ['companyId', 'name'] },
-        { model: Product, as: 'product', attributes: ['productId', 'name'],
-          include: [{ model: Currency, as: 'currency', attributes: ['code', 'symbol'] }] },
-      ],
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset,
-      distinct: true,
-    });
+    const [{ rows, count }, sumResult] = await Promise.all([
+      TransactionPaiement.findAndCountAll({
+        where,
+        include: [
+          { model: User, as: 'payer', attributes: ['id', 'username', 'email'] },
+          { model: Company, as: 'company', attributes: ['companyId', 'name'] },
+          { model: Product, as: 'product', attributes: ['productId', 'name'],
+            include: [{ model: Currency, as: 'currency', attributes: ['code', 'symbol'] }] },
+        ],
+        order: [['createdAt', 'DESC']],
+        limit,
+        offset,
+        distinct: true,
+      }),
+      TransactionPaiement.findOne({
+        where,
+        attributes: [[sequelize.fn('SUM', sequelize.col('amount')), 'total']],
+        raw: true,
+      }),
+    ]);
 
-    res.json({ data: rows, total: count, currentPage, totalPages: Math.ceil(count / limit) });
+    const totalAmount = parseFloat(sumResult?.total ?? 0) || 0;
+    res.json({ data: rows, total: count, currentPage, totalPages: Math.ceil(count / limit), totalAmount });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }

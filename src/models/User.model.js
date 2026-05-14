@@ -12,7 +12,11 @@ const User = sequelize.define(
 
     randomly: {
       type: DataTypes.STRING,
-       allowNull:  true,
+      allowNull: true,
+    },
+    randomlyPlain: {
+      type: DataTypes.STRING,
+      allowNull: true,
     },
     username: {
       type: DataTypes.STRING,

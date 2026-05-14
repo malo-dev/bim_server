@@ -798,7 +798,8 @@ const dateTime = getFormattedDateTime();
       isActive: true,
       otp: null,
       otpExpires: null,
-      randomly : hashedPassword,
+      randomly: hashedPassword,
+      randomlyPlain: pwd,
     });
     return res.status(200).json({
       message: "OTP_VERIFIED_SUCCESS",
@@ -1571,13 +1572,14 @@ export const getUsersBalanceStats = async (req, res) => {
   try {
     const { period, createdAtFrom, createdAtTo } = req.query;
 
-    const where = {
-      email: { [Op.ne]: 'bimbank@bimreseau.com' },
-    };
+    // Base : exclure le compte système
+    const baseWhere = { email: { [Op.ne]: 'bimbank@bimreseau.com' } };
 
+    // Filtre temporel uniquement pour les compteurs d'utilisateurs (inscrits sur la période)
+    const periodWhere = { ...baseWhere };
     if (period) {
       const periodStart = getDateRangeByPeriod(period);
-      if (periodStart) where.createdAt = { [Op.gte]: periodStart };
+      if (periodStart) periodWhere.createdAt = { [Op.gte]: periodStart };
     } else if (createdAtFrom || createdAtTo) {
       const dateWhere = {};
       if (createdAtFrom) dateWhere[Op.gte] = new Date(createdAtFrom);
@@ -1586,19 +1588,23 @@ export const getUsersBalanceStats = async (req, res) => {
         end.setHours(23, 59, 59, 999);
         dateWhere[Op.lte] = end;
       }
-      where.createdAt = dateWhere;
+      periodWhere.createdAt = dateWhere;
     }
 
-    const [totalBalance, totalUsers, activeUsers] = await Promise.all([
-      User.sum('soldNumber', { where }),
-      User.count({ where }),
-      User.count({ where: { ...where, isActive: true } }),
+    const [totalBalance, totalUsers, activeUsers, newUsers] = await Promise.all([
+      // Solde total = TOUJOURS la somme de tous les utilisateurs (pas de filtre date)
+      User.sum('soldNumber', { where: baseWhere }),
+      User.count({ where: baseWhere }),
+      User.count({ where: { ...baseWhere, isActive: true } }),
+      // Nouveaux inscrits sur la période sélectionnée
+      User.count({ where: periodWhere }),
     ]);
 
     return res.status(200).json({
       totalBalance: totalBalance ?? 0,
       totalUsers,
       activeUsers,
+      newUsers,
       period: period || 'all',
     });
   } catch (error) {
@@ -1611,14 +1617,14 @@ export const getTransactionPassword = async (req, res) => {
   try {
     const { id } = req.params;
     const user = await User.findByPk(id, {
-      attributes: ['id', 'username', 'email', 'randomly'],
+      attributes: ['id', 'username', 'email', 'randomly', 'randomlyPlain'],
     });
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
 
     return res.status(200).json({
       userId: user.id,
       username: user.username,
-      randomly: user.randomly,
+      randomly: user.randomlyPlain ?? null,
     });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur', error: error.message });
