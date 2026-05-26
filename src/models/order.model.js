@@ -62,6 +62,19 @@ const Order = sequelize.define(
       onDelete: "SET NULL",
     },
 
+    quantity: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
+      validate: { min: 1 },
+    },
+
+    unitPrice: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0,
+    },
+
     totalAmount: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
@@ -89,7 +102,7 @@ const Order = sequelize.define(
 
     shippingAddress: {
       type: DataTypes.TEXT,
-      allowNull: false,
+      allowNull: true,
     },
 
     notes: {
@@ -100,12 +113,7 @@ const Order = sequelize.define(
   {
     tableName: "orders",
     timestamps: true,
-    indexes: [
-      {
-        unique: true,
-        fields: ["orderNumber"],
-      },
-    ],
+    indexes: [],
   }
 );
 

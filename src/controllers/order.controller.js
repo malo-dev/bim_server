@@ -3,6 +3,93 @@ import { Order, User, Company, Product, Currency, TransactionPaiement } from "..
 import sequelize from "../config/database.js";
 import { getDateRangeByPeriod } from "../utils/getDateRangeByPeriod.util.js";
 
+export const createOrder = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { items, companyId, shippingAddress, notes, paymentMethod } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0)
+      return res.status(400).json({ message: "Le panier est vide" });
+    if (!companyId)
+      return res.status(400).json({ message: "companyId requis" });
+
+    const orderNumber = `ORD-${Date.now()}-${userId}`;
+
+    const created = await Promise.all(
+      items.map((item) =>
+        Order.create({
+          orderNumber,
+          userId,
+          companyId,
+          productId:       item.productId,
+          quantity:        item.qty,
+          unitPrice:       item.unitPrice,
+          totalAmount:     parseFloat((item.qty * item.unitPrice).toFixed(2)),
+          status:          "pending",
+          paymentMethod:   paymentMethod || "delivery",
+          shippingAddress: shippingAddress || null,
+          notes:           notes || null,
+        })
+      )
+    );
+
+    return res.status(201).json({ orderNumber, orders: created });
+  } catch (error) {
+    res.status(500).json({ message: "Erreur serveur", error: error.message });
+  }
+};
+
+export const getUserOrders = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { status } = req.query;
+
+    const where = { userId };
+    if (status) where.status = status;
+
+    const include = [
+      { model: Company, as: "company", attributes: ["companyId", "name", "logo"] },
+      { model: Product, as: "product", attributes: ["productId", "name", "imageUrl"],
+        include: [{ model: Currency, as: "currency", attributes: ["code", "symbol"] }] },
+    ];
+
+    const rows = await Order.findAll({ where, include, order: [["createdAt", "DESC"]] });
+
+    // Grouper par orderNumber
+    const grouped = {};
+    for (const o of rows) {
+      const d = o.toJSON();
+      if (!grouped[d.orderNumber]) {
+        grouped[d.orderNumber] = {
+          orderNumber: d.orderNumber,
+          status:      d.status,
+          createdAt:   d.createdAt,
+          company:     d.company,
+          items:       [],
+          grandTotal:  0,
+        };
+      }
+      grouped[d.orderNumber].items.push({
+        orderId:    d.orderId,
+        product:    d.product,
+        qty:        d.quantity,
+        unitPrice:  d.unitPrice,
+        totalAmount: d.totalAmount,
+      });
+      grouped[d.orderNumber].grandTotal += parseFloat(d.totalAmount);
+    }
+
+    const orders = Object.values(grouped).map(g => ({
+      ...g,
+      grandTotal: parseFloat(g.grandTotal.toFixed(2)),
+    }));
+
+    return res.json({ data: orders, total: orders.length });
+  } catch (error) {
+    res.status(500).json({ message: "Erreur serveur", error: error.message });
+  }
+};
+
 export const getOrders = async (req, res) => {
   try {
     const {

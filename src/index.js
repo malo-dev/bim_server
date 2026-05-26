@@ -20,7 +20,23 @@ sequelize.sync()
     try {
       await sequelize.query('ALTER TABLE orders MODIFY COLUMN companyId INT NULL');
       console.log('✅ orders.companyId → nullable');
-    } catch { /* déjà nullable ou table absente */ }
+    } catch { /* déjà fait */ }
+    try {
+      await sequelize.query('ALTER TABLE orders MODIFY COLUMN shippingAddress TEXT NULL');
+      console.log('✅ orders.shippingAddress → nullable');
+    } catch { /* déjà fait */ }
+    try {
+      await sequelize.query('ALTER TABLE orders ADD COLUMN quantity INT NOT NULL DEFAULT 1');
+      console.log('✅ orders.quantity ajouté');
+    } catch { /* colonne déjà présente */ }
+    try {
+      await sequelize.query('ALTER TABLE orders ADD COLUMN unitPrice DECIMAL(10,2) NOT NULL DEFAULT 0');
+      console.log('✅ orders.unitPrice ajouté');
+    } catch { /* colonne déjà présente */ }
+    try {
+      await sequelize.query('ALTER TABLE orders DROP INDEX orderNumber');
+      console.log('✅ orders.orderNumber unique index supprimé');
+    } catch { /* déjà supprimé */ }
 
     httpServer.listen(PORT, () => {
       console.log(`🚀 Serveur lancé sur http://localhost:${PORT}`);
