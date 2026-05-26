@@ -38,6 +38,11 @@ sequelize.sync()
       console.log('✅ orders.orderNumber unique index supprimé');
     } catch { /* déjà supprimé */ }
 
+    try {
+      await sequelize.query("ALTER TABLE orders ADD COLUMN clientPhone VARCHAR(30) NULL");
+      console.log('✅ orders.clientPhone ajouté');
+    } catch { /* déjà existant */ }
+
     httpServer.listen(PORT, () => {
       console.log(`🚀 Serveur lancé sur http://localhost:${PORT}`);
       console.log(`🔌 Socket.io actif sur ws://localhost:${PORT}`);

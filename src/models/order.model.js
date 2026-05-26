@@ -109,6 +109,11 @@ const Order = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+
+    clientPhone: {
+      type: DataTypes.STRING(30),
+      allowNull: true,
+    },
   },
   {
     tableName: "orders",

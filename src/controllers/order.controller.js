@@ -6,7 +6,7 @@ import { getDateRangeByPeriod } from "../utils/getDateRangeByPeriod.util.js";
 export const createOrder = async (req, res) => {
   try {
     const userId = req.user?.id;
-    const { items, companyId, shippingAddress, notes, paymentMethod } = req.body;
+    const { items, companyId, shippingAddress, notes, paymentMethod, clientPhone } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0)
       return res.status(400).json({ message: "Le panier est vide" });
@@ -29,6 +29,7 @@ export const createOrder = async (req, res) => {
           paymentMethod:   paymentMethod || "delivery",
           shippingAddress: shippingAddress || null,
           notes:           notes || null,
+          clientPhone:     clientPhone || null,
         })
       )
     );
