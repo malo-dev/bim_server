@@ -15,6 +15,10 @@ import {
   acceptOrder,
   cancelDelivery,
   getMyDeliveries,
+  getMyEarnings,
+  sendSOS,
+  resolveSOS,
+  getSOSAlerts,
 } from '../controllers/livreur.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 
@@ -68,5 +72,13 @@ router.get('/orders/available', authMiddleware, getAvailableOrders);
 router.get('/orders/mine',      authMiddleware, getMyDeliveries);
 router.put('/orders/accept/:orderNumber',  authMiddleware, acceptOrder);
 router.put('/orders/cancel/:orderNumber',  authMiddleware, cancelDelivery);
+
+// Revenus / commissions
+router.get('/earnings', authMiddleware, getMyEarnings);
+
+// Alertes SOS
+router.post('/sos',               authMiddleware, sendSOS);
+router.get('/sos/alerts',         authMiddleware, getSOSAlerts);
+router.put('/sos/:sosId/resolve', authMiddleware, resolveSOS);
 
 export default router;

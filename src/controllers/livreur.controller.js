@@ -1,9 +1,9 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { Livreur, LivreurRating, User, Company, Order, Product } from '../models/index.js';
+import { Livreur, LivreurRating, LivreurSOS, User, Company, Order, Product } from '../models/index.js';
 import sequelize from '../config/database.js';
 import { sendEmail } from '../utils/sendEmail.utils.js';
-import { emitToUser, getIO, emitOrderUpdate } from '../services/socket.service.js';
+import { emitToUser, getIO, emitOrderUpdate, emitSOSAlert } from '../services/socket.service.js';
 import { Op } from 'sequelize';
 
 function generatePassword(length = 8) {
@@ -340,7 +340,7 @@ export const getAvailableOrders = async (req, res) => {
       where,
       include: [
         { model: User,    as: 'user',    attributes: ['id', 'username', 'telephone'] },
-        { model: Company, as: 'company', attributes: ['companyId', 'name'] },
+        { model: Company, as: 'company', attributes: ['companyId', 'name', 'commissionRate'] },
         { model: Product, as: 'product', attributes: ['productId', 'name'] },
       ],
       order: [['createdAt', 'DESC']],
@@ -359,6 +359,7 @@ export const getAvailableOrders = async (req, res) => {
           clientPhone: d.clientPhone,
           user:        d.user,
           company:     d.company,
+          commissionRate: parseFloat(d.company?.commissionRate ?? 10),
           items:       [],
           grandTotal:  0,
         };
@@ -385,7 +386,7 @@ export const acceptOrder = async (req, res) => {
 
     // Verrou atomique : UPDATE uniquement si livreurId IS NULL
     const [count] = await Order.update(
-      { livreurId: livreur.livreurId, status: 'confirmed' },
+      { livreurId: livreur.livreurId, status: 'confirmed', estimatedMinutes: 30 },
       { where: { orderNumber, livreurId: null, status: 'pending' } }
     );
 
@@ -468,6 +469,7 @@ export const getMyDeliveries = async (req, res) => {
       include: [
         { model: User,    as: 'user',    attributes: ['id', 'username', 'telephone'] },
         { model: Product, as: 'product', attributes: ['productId', 'name'] },
+        { model: Company, as: 'company', attributes: ['companyId', 'name', 'commissionRate'] },
       ],
       order: [['createdAt', 'DESC']],
     });
@@ -479,15 +481,178 @@ export const getMyDeliveries = async (req, res) => {
         grouped[d.orderNumber] = {
           orderNumber: d.orderNumber, status: d.status, createdAt: d.createdAt,
           shippingAddress: d.shippingAddress, clientPhone: d.clientPhone,
-          user: d.user, items: [], grandTotal: 0,
+          user: d.user, company: d.company,
+          commissionRate: parseFloat(d.company?.commissionRate ?? 10),
+          items: [], grandTotal: 0,
         };
       }
       grouped[d.orderNumber].items.push({ product: d.product, qty: d.quantity, totalAmount: d.totalAmount });
       grouped[d.orderNumber].grandTotal += parseFloat(d.totalAmount);
     }
 
-    const result = Object.values(grouped).map(g => ({ ...g, grandTotal: parseFloat(g.grandTotal.toFixed(2)) }));
+    const result = Object.values(grouped).map(g => ({
+      ...g,
+      grandTotal:  parseFloat(g.grandTotal.toFixed(2)),
+      myCommission: parseFloat((g.grandTotal * (g.commissionRate / 100)).toFixed(2)),
+    }));
     return res.json({ data: result, total: result.length });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// GET /livreur/earnings — Commissions du livreur par période
+export const getMyEarnings = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const livreur = await Livreur.findOne({ where: { userId, status: 'active' } });
+    if (!livreur) return res.status(403).json({ message: 'Profil livreur actif requis' });
+
+    const delivered = await Order.findAll({
+      where: { livreurId: livreur.livreurId, status: 'delivered', paymentStatus: 'paid' },
+      include: [{ model: Company, as: 'company', attributes: ['companyId', 'name', 'commissionRate'] }],
+      order: [['updatedAt', 'DESC']],
+    });
+
+    const now = new Date();
+    const startOf = (unit) => {
+      const d = new Date(now);
+      if (unit === 'day')      { d.setHours(0,0,0,0); }
+      if (unit === 'week')     { d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); }
+      if (unit === 'month')    { d.setDate(1); d.setHours(0,0,0,0); }
+      if (unit === 'quarter')  { d.setMonth(Math.floor(d.getMonth()/3)*3, 1); d.setHours(0,0,0,0); }
+      if (unit === 'semester') { d.setMonth(d.getMonth() < 6 ? 0 : 6, 1); d.setHours(0,0,0,0); }
+      if (unit === 'year')     { d.setMonth(0, 1); d.setHours(0,0,0,0); }
+      return d;
+    };
+
+    const calcEarnings = (rows, from) => rows
+      .filter(o => new Date(o.updatedAt) >= from)
+      .reduce((sum, o) => sum + parseFloat(o.totalAmount) * (parseFloat(o.company?.commissionRate ?? 10) / 100), 0);
+
+    const periods = {
+      day:      parseFloat(calcEarnings(delivered, startOf('day')).toFixed(2)),
+      week:     parseFloat(calcEarnings(delivered, startOf('week')).toFixed(2)),
+      month:    parseFloat(calcEarnings(delivered, startOf('month')).toFixed(2)),
+      quarter:  parseFloat(calcEarnings(delivered, startOf('quarter')).toFixed(2)),
+      semester: parseFloat(calcEarnings(delivered, startOf('semester')).toFixed(2)),
+      year:     parseFloat(calcEarnings(delivered, startOf('year')).toFixed(2)),
+    };
+
+    const recent = delivered.slice(0, 10).map(o => ({
+      orderNumber: o.orderNumber,
+      company:     o.company?.name ?? '—',
+      amount:      parseFloat(o.totalAmount),
+      commission:  parseFloat((parseFloat(o.totalAmount) * (parseFloat(o.company?.commissionRate ?? 10) / 100)).toFixed(2)),
+      rate:        parseFloat(o.company?.commissionRate ?? 10),
+      date:        o.updatedAt,
+    }));
+
+    return res.json({ periods, recent, totalDeliveries: delivered.length });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// POST /livreur/sos — Envoyer une alerte SOS
+export const sendSOS = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { type, latitude, longitude } = req.body;
+
+    const VALID_TYPES = ['suspect', 'urgence', 'secours'];
+    if (!VALID_TYPES.includes(type)) {
+      return res.status(400).json({ message: 'Type SOS invalide (suspect | urgence | secours)' });
+    }
+
+    const livreur = await Livreur.findOne({
+      where: { userId, status: 'active' },
+      include: [{ model: User, as: 'user', attributes: ['id', 'username', 'email'] }],
+    });
+    if (!livreur) return res.status(403).json({ message: 'Profil livreur actif requis' });
+
+    // Utiliser la position transmise ou la dernière position enregistrée
+    const lat = latitude  ?? livreur.latitude;
+    const lng = longitude ?? livreur.longitude;
+
+    const sos = await LivreurSOS.create({
+      livreurId: livreur.livreurId,
+      type,
+      latitude:  lat,
+      longitude: lng,
+      status: 'active',
+    });
+
+    const TYPE_LABEL = { suspect: '🟠 Suspect', urgence: '🔴 Urgence', secours: '🆘 AU SECOURS' };
+    const mapsLink = lat && lng ? `https://maps.google.com/?q=${lat},${lng}` : 'Position inconnue';
+
+    const payload = {
+      sosId:     sos.sosId,
+      type,
+      typeLabel: TYPE_LABEL[type],
+      livreurId: livreur.livreurId,
+      livreurName: livreur.user?.username ?? 'Livreur',
+      telephone:   livreur.telephone,
+      latitude:    lat,
+      longitude:   lng,
+      mapsLink,
+      createdAt:   sos.createdAt,
+    };
+
+    // Notifier les admins en temps réel
+    emitSOSAlert(payload);
+
+    // Email de secours
+    try {
+      await sendEmail({
+        to: process.env.SUPPORT_EMAIL || 'support@bimnext.com',
+        subject: `${TYPE_LABEL[type]} — Alerte SOS livreur BIM NEXT`,
+        html: `
+          <h2 style="color:#DC2626">🚨 Alerte SOS Livreur</h2>
+          <p><b>Type :</b> ${TYPE_LABEL[type]}</p>
+          <p><b>Livreur :</b> ${livreur.user?.username ?? '—'} (${livreur.user?.email ?? '—'})</p>
+          <p><b>Téléphone :</b> ${livreur.telephone ?? 'Non renseigné'}</p>
+          <p><b>Position :</b> <a href="${mapsLink}">${mapsLink}</a></p>
+          <p><b>Heure :</b> ${new Date().toLocaleString('fr-FR')}</p>
+          <hr/>
+          <p style="color:#666">Connectez-vous au panneau admin BIM NEXT pour gérer cette alerte.</p>
+        `,
+      });
+    } catch { /* email non bloquant */ }
+
+    return res.status(201).json({ message: 'Alerte SOS envoyée', sos: payload });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// PUT /livreur/sos/:sosId/resolve — Résoudre une alerte SOS (admin)
+export const resolveSOS = async (req, res) => {
+  try {
+    const { sosId } = req.params;
+    const sos = await LivreurSOS.findByPk(sosId);
+    if (!sos) return res.status(404).json({ message: 'Alerte introuvable' });
+    await sos.update({ status: 'resolved', resolvedAt: new Date() });
+    return res.json({ message: 'Alerte résolue', sosId });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// GET /livreur/sos — Liste des alertes SOS actives (admin)
+export const getSOSAlerts = async (req, res) => {
+  try {
+    const { status = 'active' } = req.query;
+    const alerts = await LivreurSOS.findAll({
+      where: status !== 'all' ? { status } : {},
+      include: [{
+        model: Livreur, as: 'livreur',
+        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'email'] }],
+        attributes: ['livreurId', 'telephone', 'latitude', 'longitude'],
+      }],
+      order: [['createdAt', 'DESC']],
+    });
+    return res.json({ data: alerts, total: alerts.length });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }

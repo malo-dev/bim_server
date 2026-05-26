@@ -128,6 +128,12 @@ const Order = sequelize.define(
       onUpdate: "CASCADE",
       onDelete: "SET NULL",
     },
+
+    estimatedMinutes: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null,
+    },
   },
   {
     tableName: "orders",

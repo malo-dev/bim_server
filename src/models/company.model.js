@@ -65,6 +65,13 @@ const Company = sequelize.define(
       type: DataTypes.STRING(500),
       allowNull: true,
     },
+
+    commissionRate: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: false,
+      defaultValue: 10.00,
+      validate: { min: 0, max: 50 },
+    },
   },
   {
     tableName: "companies",

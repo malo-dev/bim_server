@@ -116,3 +116,10 @@ export const emitOrderUpdate = (orderNumber, payload) => {
     io.to(`order_${orderNumber}`).emit('order:status_updated', payload);
   }
 };
+
+// Émet une alerte SOS livreur aux admins
+export const emitSOSAlert = (payload) => {
+  if (io) {
+    io.to('admin_room').emit('livreur:sos', payload);
+  }
+};

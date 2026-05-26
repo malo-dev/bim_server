@@ -62,6 +62,31 @@ sequelize.sync()
       await sequelize.query("ALTER TABLE livreur_ratings ADD UNIQUE INDEX livreur_user_unique (livreurId, userId)");
       console.log('✅ livreur_ratings unique index ajouté');
     } catch { /* déjà existant */ }
+    try {
+      await sequelize.query("ALTER TABLE orders ADD COLUMN estimatedMinutes INT NULL");
+      console.log('✅ orders.estimatedMinutes ajouté');
+    } catch { /* déjà existant */ }
+    try {
+      await sequelize.query("ALTER TABLE companies ADD COLUMN commissionRate DECIMAL(5,2) NOT NULL DEFAULT 10.00");
+      console.log('✅ companies.commissionRate ajouté');
+    } catch { /* déjà existant */ }
+    try {
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS livreur_sos (
+          sosId INT AUTO_INCREMENT PRIMARY KEY,
+          livreurId INT NOT NULL,
+          type ENUM('suspect','urgence','secours') NOT NULL,
+          latitude DECIMAL(10,8) NULL,
+          longitude DECIMAL(11,8) NULL,
+          status ENUM('active','resolved') NOT NULL DEFAULT 'active',
+          resolvedAt DATETIME NULL,
+          createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          FOREIGN KEY (livreurId) REFERENCES livreurs(livreurId) ON DELETE CASCADE
+        )
+      `);
+      console.log('✅ livreur_sos créée');
+    } catch { /* déjà existant */ }
 
     httpServer.listen(PORT, () => {
       console.log(`🚀 Serveur lancé sur http://localhost:${PORT}`);
