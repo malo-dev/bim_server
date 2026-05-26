@@ -120,6 +120,14 @@ const Order = sequelize.define(
       defaultValue: "pending",
       allowNull: false,
     },
+
+    livreurId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: { model: "livreurs", key: "livreurId" },
+      onUpdate: "CASCADE",
+      onDelete: "SET NULL",
+    },
   },
   {
     tableName: "orders",

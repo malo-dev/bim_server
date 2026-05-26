@@ -1,9 +1,10 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { Livreur, LivreurRating, User, Company } from '../models/index.js';
+import { Livreur, LivreurRating, User, Company, Order, Product } from '../models/index.js';
 import sequelize from '../config/database.js';
 import { sendEmail } from '../utils/sendEmail.utils.js';
-import { emitToUser, getIO } from '../services/socket.service.js';
+import { emitToUser, getIO, emitOrderUpdate } from '../services/socket.service.js';
+import { Op } from 'sequelize';
 
 function generatePassword(length = 8) {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#';
@@ -319,6 +320,174 @@ export const getLivreurPublicProfile = async (req, res) => {
     });
     const avg = livreurs.length ? livreurs.reduce((s, l) => s + parseFloat(l.rating || 0), 0) / livreurs.length : 0;
     return res.json({ data: livreurs, companiesCount: livreurs.length, averageRating: parseFloat(avg.toFixed(2)) });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// GET /livreur/orders/available — Commandes disponibles pour ce livreur
+export const getAvailableOrders = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const livreur = await Livreur.findOne({ where: { userId, status: 'active' } });
+    if (!livreur) return res.status(403).json({ message: 'Profil livreur actif requis' });
+
+    // Commandes pending, non encore assignées, pour la même entreprise que le livreur
+    const where = { status: 'pending', livreurId: null };
+    if (livreur.companyId) where.companyId = livreur.companyId;
+
+    const orders = await Order.findAll({
+      where,
+      include: [
+        { model: User,    as: 'user',    attributes: ['id', 'username', 'telephone'] },
+        { model: Company, as: 'company', attributes: ['companyId', 'name'] },
+        { model: Product, as: 'product', attributes: ['productId', 'name'] },
+      ],
+      order: [['createdAt', 'DESC']],
+    });
+
+    // Grouper par orderNumber
+    const grouped = {};
+    for (const o of orders) {
+      const d = o.toJSON();
+      if (!grouped[d.orderNumber]) {
+        grouped[d.orderNumber] = {
+          orderNumber: d.orderNumber,
+          status:      d.status,
+          createdAt:   d.createdAt,
+          shippingAddress: d.shippingAddress,
+          clientPhone: d.clientPhone,
+          user:        d.user,
+          company:     d.company,
+          items:       [],
+          grandTotal:  0,
+        };
+      }
+      grouped[d.orderNumber].items.push({ product: d.product, qty: d.quantity, unitPrice: d.unitPrice, totalAmount: d.totalAmount });
+      grouped[d.orderNumber].grandTotal += parseFloat(d.totalAmount);
+    }
+
+    const result = Object.values(grouped).map(g => ({ ...g, grandTotal: parseFloat(g.grandTotal.toFixed(2)) }));
+    return res.json({ data: result, total: result.length });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// PUT /livreur/orders/accept/:orderNumber — Accepter une commande (verrou atomique)
+export const acceptOrder = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { orderNumber } = req.params;
+
+    const livreur = await Livreur.findOne({ where: { userId, status: 'active' } });
+    if (!livreur) return res.status(403).json({ message: 'Profil livreur actif requis' });
+
+    // Verrou atomique : UPDATE uniquement si livreurId IS NULL
+    const [count] = await Order.update(
+      { livreurId: livreur.livreurId, status: 'confirmed' },
+      { where: { orderNumber, livreurId: null, status: 'pending' } }
+    );
+
+    if (!count) {
+      return res.status(409).json({ message: 'Cette commande a déjà été prise par un autre livreur' });
+    }
+
+    // Notifier le client en temps réel
+    const firstOrder = await Order.findOne({
+      where: { orderNumber },
+      include: [
+        { model: Livreur, as: 'livreur', include: [{ model: User, as: 'user', attributes: ['id', 'username', 'telephone'] }] },
+      ],
+    });
+
+    emitOrderUpdate(orderNumber, {
+      orderNumber,
+      status: 'confirmed',
+      livreur: firstOrder?.livreur ? {
+        livreurId: firstOrder.livreur.livreurId,
+        username:  firstOrder.livreur.user?.username,
+        telephone: firstOrder.livreur.telephone,
+        rating:    firstOrder.livreur.rating,
+        latitude:  firstOrder.livreur.latitude,
+        longitude: firstOrder.livreur.longitude,
+      } : null,
+    });
+
+    if (firstOrder?.userId) {
+      emitToUser(firstOrder.userId, 'notification', {
+        title: 'Livreur assigné 🚴',
+        body: `${firstOrder.livreur?.user?.username ?? 'Un livreur'} a accepté votre commande et est en route !`,
+        type: 'order',
+      });
+    }
+
+    return res.json({ message: 'Commande acceptée', livreurId: livreur.livreurId });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// PUT /livreur/orders/cancel/:orderNumber — Libérer une commande (livreur annule)
+export const cancelDelivery = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { orderNumber } = req.params;
+
+    const livreur = await Livreur.findOne({ where: { userId, status: 'active' } });
+    if (!livreur) return res.status(403).json({ message: 'Profil livreur actif requis' });
+
+    const [count] = await Order.update(
+      { livreurId: null, status: 'pending' },
+      { where: { orderNumber, livreurId: livreur.livreurId } }
+    );
+
+    if (!count) return res.status(404).json({ message: 'Commande introuvable ou non assignée à vous' });
+
+    emitOrderUpdate(orderNumber, {
+      orderNumber,
+      status: 'pending',
+      livreur: null,
+    });
+
+    return res.json({ message: 'Livraison annulée, commande de nouveau disponible' });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// GET /livreur/orders/mine — Livraisons en cours du livreur
+export const getMyDeliveries = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const livreur = await Livreur.findOne({ where: { userId, status: 'active' } });
+    if (!livreur) return res.status(403).json({ message: 'Profil livreur actif requis' });
+
+    const orders = await Order.findAll({
+      where: { livreurId: livreur.livreurId, status: { [Op.notIn]: ['delivered', 'cancelled'] } },
+      include: [
+        { model: User,    as: 'user',    attributes: ['id', 'username', 'telephone'] },
+        { model: Product, as: 'product', attributes: ['productId', 'name'] },
+      ],
+      order: [['createdAt', 'DESC']],
+    });
+
+    const grouped = {};
+    for (const o of orders) {
+      const d = o.toJSON();
+      if (!grouped[d.orderNumber]) {
+        grouped[d.orderNumber] = {
+          orderNumber: d.orderNumber, status: d.status, createdAt: d.createdAt,
+          shippingAddress: d.shippingAddress, clientPhone: d.clientPhone,
+          user: d.user, items: [], grandTotal: 0,
+        };
+      }
+      grouped[d.orderNumber].items.push({ product: d.product, qty: d.quantity, totalAmount: d.totalAmount });
+      grouped[d.orderNumber].grandTotal += parseFloat(d.totalAmount);
+    }
+
+    const result = Object.values(grouped).map(g => ({ ...g, grandTotal: parseFloat(g.grandTotal.toFixed(2)) }));
+    return res.json({ data: result, total: result.length });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }

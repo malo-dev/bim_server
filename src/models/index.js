@@ -225,6 +225,11 @@ User.hasMany(Notes,    { foreignKey: 'userId',    as: 'notes' });
 Company.hasMany(Notes, { foreignKey: 'companyId', as: 'notes' });
 Product.hasMany(Notes, { foreignKey: 'productId', as: 'notes' });
 
+// ================= ORDERS → LIVREUR =================
+
+Order.belongsTo(Livreur, { foreignKey: 'livreurId', as: 'livreur', ...SET_NULL });
+Livreur.hasMany(Order,   { foreignKey: 'livreurId', as: 'deliveries' });
+
 // ================= LIVREURS =================
 
 Livreur.belongsTo(User,    { foreignKey: 'userId',    as: 'user',    ...CASCADE });

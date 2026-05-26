@@ -48,6 +48,11 @@ sequelize.sync()
       console.log('✅ orders.paymentStatus ajouté');
     } catch { /* déjà existant */ }
 
+    try {
+      await sequelize.query("ALTER TABLE orders ADD COLUMN livreurId INT NULL");
+      console.log('✅ orders.livreurId ajouté');
+    } catch { /* déjà existant */ }
+
     // Tables livreurs (créées automatiquement par sequelize.sync, patches de sécurité)
     try {
       await sequelize.query("ALTER TABLE livreurs MODIFY COLUMN companyId INT NULL");

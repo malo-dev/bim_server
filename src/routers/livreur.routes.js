@@ -11,6 +11,10 @@ import {
   updateLivreurStatus,
   rateLivreur,
   getLivreurPublicProfile,
+  getAvailableOrders,
+  acceptOrder,
+  cancelDelivery,
+  getMyDeliveries,
 } from '../controllers/livreur.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 
@@ -58,5 +62,11 @@ router.put('/:id/status', authMiddleware, updateLivreurStatus);
 
 // Notation (user)
 router.post('/:id/rate', authMiddleware, rateLivreur);
+
+// Gestion des livraisons (livreur)
+router.get('/orders/available', authMiddleware, getAvailableOrders);
+router.get('/orders/mine',      authMiddleware, getMyDeliveries);
+router.put('/orders/accept/:orderNumber',  authMiddleware, acceptOrder);
+router.put('/orders/cancel/:orderNumber',  authMiddleware, cancelDelivery);
 
 export default router;

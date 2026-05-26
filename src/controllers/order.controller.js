@@ -35,6 +35,18 @@ export const createOrder = async (req, res) => {
       )
     );
 
+    // Notifier les livreurs actifs de cette entreprise
+    try {
+      const io = emitOrderUpdate.__io ?? null;
+      const { getIO } = await import('../services/socket.service.js');
+      const ioInstance = getIO();
+      ioInstance.emit(`company:new_order:${companyId}`, {
+        orderNumber,
+        companyId,
+        message: 'Nouvelle commande disponible',
+      });
+    } catch {}
+
     return res.status(201).json({ orderNumber, orders: created });
   } catch (error) {
     res.status(500).json({ message: "Erreur serveur", error: error.message });
@@ -49,10 +61,15 @@ export const getUserOrders = async (req, res) => {
     const where = { userId };
     if (status) where.status = status;
 
+    const { Livreur } = await import('../models/index.js');
+
     const include = [
       { model: Company, as: "company", attributes: ["companyId", "name", "logo"] },
       { model: Product, as: "product", attributes: ["productId", "name", "imageUrl"],
         include: [{ model: Currency, as: "currency", attributes: ["code", "symbol"] }] },
+      { model: Livreur, as: "livreur", required: false,
+        include: [{ model: User, as: "user", attributes: ["id", "username"] }],
+        attributes: ["livreurId", "telephone", "rating", "latitude", "longitude", "isOnline"] },
     ];
 
     const rows = await Order.findAll({ where, include, order: [["createdAt", "DESC"]] });
@@ -71,6 +88,7 @@ export const getUserOrders = async (req, res) => {
           companyId:      d.companyId,
           shippingAddress: d.shippingAddress,
           clientPhone:    d.clientPhone,
+          livreur:        d.livreur ?? null,
           items:          [],
           grandTotal:     0,
         };
