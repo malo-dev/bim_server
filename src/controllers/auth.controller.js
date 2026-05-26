@@ -1,11 +1,12 @@
 /* eslint-disable no-undef */
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { User, Role, BranchTrack, Commerce, Company, BusinessCategory, Order, Transaction } from '../models/index.js';
+import { User, Role, BranchTrack, Commerce, Company, BusinessCategory, Order, Transaction, UserSOS } from '../models/index.js';
 import sequelize from '../config/database.js';
 import { Op } from 'sequelize';
 import crypto from 'crypto';
-import { mailer } from '../utils/sendEmail.utils.js';
+import { mailer, sendEmail } from '../utils/sendEmail.utils.js';
+import { emitSOSAlert } from '../services/socket.service.js';
 import path from 'path';
 import fs from 'fs';
 import { generateNewLoginAlertEmailTemplate,generateTransactionPasswordEmailTemplate, generateOtpEmailTemplate, generateOtpEmailTemplateActivated } from '../utils/templateMails.util.js';
@@ -1680,6 +1681,137 @@ export const adminResetUserPassword = async (req, res) => {
   }
 };
 
+// ─── SOS Utilisateur ─────────────────────────────────────────────────────────
+
+export const sendUserSOS = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { category = 'securite', type, subType, caseLocation, contactPhone, latitude, longitude } = req.body;
+
+    const VALID_TYPES_SECURITE = ['suspect', 'urgence', 'secours'];
+    const VALID_SUBTYPES_SANTE = ['ebola', 'cas_suspect', 'autre'];
+
+    if (category === 'sante') {
+      if (!VALID_SUBTYPES_SANTE.includes(subType)) {
+        return res.status(400).json({ message: 'Sous-type SOS santé invalide (ebola | cas_suspect | autre)' });
+      }
+    } else {
+      if (!VALID_TYPES_SECURITE.includes(type)) {
+        return res.status(400).json({ message: 'Type SOS invalide (suspect | urgence | secours)' });
+      }
+    }
+
+    const user = await User.findByPk(userId, {
+      attributes: ['id', 'username', 'email', 'telephone'],
+    });
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+    const sos = await UserSOS.create({
+      userId,
+      category,
+      type: category === 'sante' ? 'sante' : type,
+      subType:       category === 'sante' ? subType       : null,
+      caseLocation:  category === 'sante' ? (caseLocation ?? null) : null,
+      contactPhone:  contactPhone ?? user.telephone ?? null,
+      latitude:  latitude  ?? null,
+      longitude: longitude ?? null,
+      status: 'active',
+    });
+
+    const TYPE_LABEL = {
+      suspect: '🟠 Suspect',
+      urgence: '🔴 Urgence',
+      secours: '🆘 AU SECOURS',
+      sante:   '🏥 SOS Santé',
+    };
+    const SUBTYPE_LABEL = {
+      ebola:      '🦠 Ebola',
+      cas_suspect: '⚠️ Cas suspect de maladie',
+      autre:      '🏥 Autre urgence médicale',
+    };
+
+    const mapsLink = latitude && longitude
+      ? `https://maps.google.com/?q=${latitude},${longitude}`
+      : 'Position inconnue';
+
+    const payload = {
+      sosId:        sos.sosId,
+      category,
+      type:         category === 'sante' ? 'sante' : type,
+      typeLabel:    category === 'sante' ? TYPE_LABEL['sante'] : TYPE_LABEL[type],
+      subType:      subType ?? null,
+      subTypeLabel: subType ? SUBTYPE_LABEL[subType] : null,
+      caseLocation: caseLocation ?? null,
+      contactPhone: sos.contactPhone,
+      source:       'user',
+      userId,
+      userName:     user.username,
+      telephone:    user.telephone ?? null,
+      latitude,
+      longitude,
+      mapsLink,
+      createdAt:    sos.createdAt,
+    };
+
+    emitSOSAlert(payload);
+
+    const emailSubject = category === 'sante'
+      ? `${SUBTYPE_LABEL[subType] ?? 'SOS Santé'} — Alerte sanitaire BIM NEXT`
+      : `${TYPE_LABEL[type]} — Alerte SOS utilisateur BIM NEXT`;
+
+    try {
+      await sendEmail({
+        to: process.env.SUPPORT_EMAIL || 'support@bimnext.com',
+        subject: emailSubject,
+        html: `
+          <h2 style="color:#DC2626">🚨 ${category === 'sante' ? 'Alerte Sanitaire' : 'Alerte SOS Sécurité'}</h2>
+          ${category === 'sante' ? `<p><b>Type :</b> ${SUBTYPE_LABEL[subType] ?? subType}</p>` : `<p><b>Type :</b> ${TYPE_LABEL[type]}</p>`}
+          <p><b>Utilisateur :</b> ${user.username} (${user.email})</p>
+          <p><b>Téléphone :</b> ${sos.contactPhone ?? 'Non renseigné'}</p>
+          ${caseLocation ? `<p><b>Localisation du cas :</b> ${caseLocation}</p>` : ''}
+          <p><b>Position GPS :</b> <a href="${mapsLink}">${mapsLink}</a></p>
+          <p><b>Heure :</b> ${new Date().toLocaleString('fr-FR')}</p>
+          <hr/>
+          <p style="color:#666">Connectez-vous au panneau admin BIM NEXT pour gérer cette alerte.</p>
+        `,
+      });
+    } catch { /* email non bloquant */ }
+
+    return res.status(201).json({ message: 'Alerte SOS envoyée', sos: payload });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+export const resolveUserSOS = async (req, res) => {
+  try {
+    const { sosId } = req.params;
+    const sos = await UserSOS.findByPk(sosId);
+    if (!sos) return res.status(404).json({ message: 'Alerte introuvable' });
+    await sos.update({ status: 'resolved', resolvedAt: new Date() });
+    return res.json({ message: 'Alerte résolue', sosId });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+export const getUserSOSAlerts = async (req, res) => {
+  try {
+    const { status = 'active' } = req.query;
+    const alerts = await UserSOS.findAll({
+      where: status !== 'all' ? { status } : {},
+      include: [{
+        model: User, as: 'user',
+        attributes: ['id', 'username', 'email', 'telephone'],
+      }],
+      order: [['createdAt', 'DESC']],
+    });
+    return res.json({ data: alerts, total: alerts.length });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
 export {
   register,
   login,
@@ -1699,5 +1831,5 @@ export {
   logOut,
   storeExpoPushToken,
   createAgent,
-  veryfUserPass
+  veryfUserPass,
 };

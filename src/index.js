@@ -72,6 +72,48 @@ sequelize.sync()
     } catch { /* déjà existant */ }
     try {
       await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS user_sos (
+          sosId INT AUTO_INCREMENT PRIMARY KEY,
+          userId INT NOT NULL,
+          category ENUM('securite','sante') NOT NULL DEFAULT 'securite',
+          type ENUM('suspect','urgence','secours','sante') NOT NULL,
+          subType ENUM('ebola','cas_suspect','autre') NULL,
+          caseLocation TEXT NULL,
+          contactPhone VARCHAR(30) NULL,
+          latitude DECIMAL(10,8) NULL,
+          longitude DECIMAL(11,8) NULL,
+          status ENUM('active','resolved') NOT NULL DEFAULT 'active',
+          resolvedAt DATETIME NULL,
+          createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+        )
+      `);
+      console.log('✅ user_sos créée');
+    } catch { /* déjà existant */ }
+    // Patch colonnes SOS santé (si table déjà créée sans ces colonnes)
+    try {
+      await sequelize.query("ALTER TABLE user_sos ADD COLUMN category ENUM('securite','sante') NOT NULL DEFAULT 'securite'");
+      console.log('✅ user_sos.category ajouté');
+    } catch { /* déjà existant */ }
+    try {
+      await sequelize.query("ALTER TABLE user_sos MODIFY COLUMN type ENUM('suspect','urgence','secours','sante') NOT NULL");
+      console.log('✅ user_sos.type étendu');
+    } catch { /* ok */ }
+    try {
+      await sequelize.query("ALTER TABLE user_sos ADD COLUMN subType ENUM('ebola','cas_suspect','autre') NULL");
+      console.log('✅ user_sos.subType ajouté');
+    } catch { /* déjà existant */ }
+    try {
+      await sequelize.query("ALTER TABLE user_sos ADD COLUMN caseLocation TEXT NULL");
+      console.log('✅ user_sos.caseLocation ajouté');
+    } catch { /* déjà existant */ }
+    try {
+      await sequelize.query("ALTER TABLE user_sos ADD COLUMN contactPhone VARCHAR(30) NULL");
+      console.log('✅ user_sos.contactPhone ajouté');
+    } catch { /* déjà existant */ }
+    try {
+      await sequelize.query(`
         CREATE TABLE IF NOT EXISTS livreur_sos (
           sosId INT AUTO_INCREMENT PRIMARY KEY,
           livreurId INT NOT NULL,

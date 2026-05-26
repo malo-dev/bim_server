@@ -31,6 +31,7 @@ import Notes from './notes.model.js';
 import Livreur from './livreur.model.js';
 import LivreurRating from './livreurRating.model.js';
 import LivreurSOS from './livreurSOS.model.js';
+import UserSOS from './userSOS.model.js';
 
 const CASCADE   = { onDelete: 'CASCADE', onUpdate: 'CASCADE' };
 const SET_NULL  = { onDelete: 'SET NULL', onUpdate: 'CASCADE' };
@@ -247,6 +248,11 @@ Livreur.hasMany(LivreurRating, { foreignKey: 'livreurId', as: 'ratings', ...CASC
 LivreurSOS.belongsTo(Livreur, { foreignKey: 'livreurId', as: 'livreur', ...CASCADE });
 Livreur.hasMany(LivreurSOS,   { foreignKey: 'livreurId', as: 'alerts',  ...CASCADE });
 
+// ================= USER SOS =================
+
+UserSOS.belongsTo(User, { foreignKey: 'userId', as: 'user', ...CASCADE });
+User.hasMany(UserSOS,   { foreignKey: 'userId', as: 'sosAlerts', ...CASCADE });
+
 export {
   User,
   Role,
@@ -278,4 +284,5 @@ export {
   Livreur,
   LivreurRating,
   LivreurSOS,
+  UserSOS,
 };

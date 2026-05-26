@@ -37,6 +37,9 @@ import {
   getTransactionPassword,
   adminRechargeUser,
   adminResetUserPassword,
+  sendUserSOS,
+  resolveUserSOS,
+  getUserSOSAlerts,
 } from '../controllers/auth.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 import upload from '../../middlewares/upload.js';
@@ -99,5 +102,10 @@ router.post('/create-commerce-account', authMiddleware, createCommerceAccount);
 router.get('/my-company-admins', authMiddleware, getMyCompanyAdmins);
 router.put('/my-company-admins/:id', authMiddleware, updateMyCompanyAdmin);
 router.delete('/my-company-admins/:id', authMiddleware, deleteMyCompanyAdmin);
+
+// SOS utilisateur
+router.post('/sos', authMiddleware, sendUserSOS);
+router.get('/sos/alerts', authMiddleware, getUserSOSAlerts);
+router.put('/sos/:sosId/resolve', authMiddleware, resolveUserSOS);
 
 export default router;
