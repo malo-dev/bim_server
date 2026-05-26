@@ -43,6 +43,21 @@ sequelize.sync()
       console.log('✅ orders.clientPhone ajouté');
     } catch { /* déjà existant */ }
 
+    try {
+      await sequelize.query("ALTER TABLE orders ADD COLUMN paymentStatus ENUM('pending','paid','refunded') NOT NULL DEFAULT 'pending'");
+      console.log('✅ orders.paymentStatus ajouté');
+    } catch { /* déjà existant */ }
+
+    // Tables livreurs (créées automatiquement par sequelize.sync, patches de sécurité)
+    try {
+      await sequelize.query("ALTER TABLE livreurs MODIFY COLUMN companyId INT NULL");
+      console.log('✅ livreurs.companyId → nullable');
+    } catch { /* ok */ }
+    try {
+      await sequelize.query("ALTER TABLE livreur_ratings ADD UNIQUE INDEX livreur_user_unique (livreurId, userId)");
+      console.log('✅ livreur_ratings unique index ajouté');
+    } catch { /* déjà existant */ }
+
     httpServer.listen(PORT, () => {
       console.log(`🚀 Serveur lancé sur http://localhost:${PORT}`);
       console.log(`🔌 Socket.io actif sur ws://localhost:${PORT}`);

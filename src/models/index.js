@@ -28,6 +28,8 @@ import TransactionPaiement from './paiementTrasanction.model.js';
 import Order from './order.model.js';
 
 import Notes from './notes.model.js';
+import Livreur from './livreur.model.js';
+import LivreurRating from './livreurRating.model.js';
 
 const CASCADE   = { onDelete: 'CASCADE', onUpdate: 'CASCADE' };
 const SET_NULL  = { onDelete: 'SET NULL', onUpdate: 'CASCADE' };
@@ -223,6 +225,17 @@ User.hasMany(Notes,    { foreignKey: 'userId',    as: 'notes' });
 Company.hasMany(Notes, { foreignKey: 'companyId', as: 'notes' });
 Product.hasMany(Notes, { foreignKey: 'productId', as: 'notes' });
 
+// ================= LIVREURS =================
+
+Livreur.belongsTo(User,    { foreignKey: 'userId',    as: 'user',    ...CASCADE });
+Livreur.belongsTo(Company, { foreignKey: 'companyId', as: 'company', ...SET_NULL });
+User.hasMany(Livreur,    { foreignKey: 'userId',    as: 'livreurs' });
+Company.hasMany(Livreur, { foreignKey: 'companyId', as: 'livreurs' });
+
+LivreurRating.belongsTo(Livreur, { foreignKey: 'livreurId', as: 'livreur', ...CASCADE });
+LivreurRating.belongsTo(User,    { foreignKey: 'userId',    as: 'rater',   ...CASCADE });
+Livreur.hasMany(LivreurRating, { foreignKey: 'livreurId', as: 'ratings', ...CASCADE });
+
 export {
   User,
   Role,
@@ -250,5 +263,7 @@ export {
   Company,
   BusinessCategory,
   Order,
-  Notes
+  Notes,
+  Livreur,
+  LivreurRating,
 };

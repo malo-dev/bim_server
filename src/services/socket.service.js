@@ -60,8 +60,22 @@ export const initSocket = (httpServer) => {
     socket.on('join_admin', () => {
       socket.join('admin_room');
       console.log(`🛡️  Admin connecté à admin_room (socket ${socket.id})`);
-      // Envoyer la liste courante des utilisateurs en ligne
       socket.emit('online_users', Array.from(onlineUsers.values()));
+    });
+
+    // Suivi d'une commande en temps réel
+    socket.on('track_order', (orderNumber) => {
+      if (orderNumber) {
+        socket.join(`order_${orderNumber}`);
+        console.log(`📦 Socket ${socket.id} suit la commande ${orderNumber}`);
+      }
+    });
+
+    // Livreur partage sa position
+    socket.on('livreur:update_location', ({ livreurId, latitude, longitude }) => {
+      if (livreurId) {
+        io.emit(`livreur:location:${livreurId}`, { livreurId, latitude, longitude });
+      }
     });
 
     socket.on('disconnect', () => {
@@ -95,3 +109,10 @@ export const emitToUser = (userId, event, data) => {
 };
 
 export const getOnlineUsers = () => Array.from(onlineUsers.values());
+
+// Émet un changement de statut de commande à tous ceux qui la suivent
+export const emitOrderUpdate = (orderNumber, payload) => {
+  if (io) {
+    io.to(`order_${orderNumber}`).emit('order:status_updated', payload);
+  }
+};

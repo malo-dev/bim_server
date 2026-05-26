@@ -2,6 +2,7 @@ import { Op } from "sequelize";
 import { Order, User, Company, Product, Currency, TransactionPaiement } from "../models/index.js";
 import sequelize from "../config/database.js";
 import { getDateRangeByPeriod } from "../utils/getDateRangeByPeriod.util.js";
+import { emitOrderUpdate } from "../services/socket.service.js";
 
 export const createOrder = async (req, res) => {
   try {
@@ -62,12 +63,16 @@ export const getUserOrders = async (req, res) => {
       const d = o.toJSON();
       if (!grouped[d.orderNumber]) {
         grouped[d.orderNumber] = {
-          orderNumber: d.orderNumber,
-          status:      d.status,
-          createdAt:   d.createdAt,
-          company:     d.company,
-          items:       [],
-          grandTotal:  0,
+          orderNumber:    d.orderNumber,
+          status:         d.status,
+          paymentStatus:  d.paymentStatus,
+          createdAt:      d.createdAt,
+          company:        d.company,
+          companyId:      d.companyId,
+          shippingAddress: d.shippingAddress,
+          clientPhone:    d.clientPhone,
+          items:          [],
+          grandTotal:     0,
         };
       }
       grouped[d.orderNumber].items.push({
@@ -86,6 +91,31 @@ export const getUserOrders = async (req, res) => {
     }));
 
     return res.json({ data: orders, total: orders.length });
+  } catch (error) {
+    res.status(500).json({ message: "Erreur serveur", error: error.message });
+  }
+};
+
+export const markOrderPaidOnDelivery = async (req, res) => {
+  try {
+    const userId      = req.user?.id;
+    const { orderNumber } = req.params;
+
+    const [count] = await Order.update(
+      { status: "delivered", paymentStatus: "paid" },
+      { where: { orderNumber, userId } }
+    );
+
+    if (!count) return res.status(404).json({ message: "Commande introuvable ou déjà traitée" });
+
+    emitOrderUpdate(orderNumber, {
+      orderNumber,
+      status: "delivered",
+      paymentStatus: "paid",
+      updatedAt: new Date().toISOString(),
+    });
+
+    return res.json({ message: "Commande marquée livrée et payée", orderNumber });
   } catch (error) {
     res.status(500).json({ message: "Erreur serveur", error: error.message });
   }
@@ -178,6 +208,17 @@ export const updateOrder = async (req, res) => {
     const order = await Order.findByPk(req.params.id);
     if (!order) return res.status(404).json({ message: "Commande introuvable" });
     await order.update(req.body);
+
+    // Notifier en temps réel tous les abonnés de cette commande
+    if (req.body.status && order.orderNumber) {
+      emitOrderUpdate(order.orderNumber, {
+        orderNumber: order.orderNumber,
+        status: req.body.status,
+        paymentStatus: order.paymentStatus,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
     res.json({ message: "Commande mise à jour avec succès", order });
   } catch (error) {
     res.status(500).json({ message: "Erreur serveur", error: error.message });

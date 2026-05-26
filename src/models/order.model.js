@@ -114,6 +114,12 @@ const Order = sequelize.define(
       type: DataTypes.STRING(30),
       allowNull: true,
     },
+
+    paymentStatus: {
+      type: DataTypes.ENUM("pending", "paid", "refunded"),
+      defaultValue: "pending",
+      allowNull: false,
+    },
   },
   {
     tableName: "orders",
