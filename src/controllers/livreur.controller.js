@@ -10,10 +10,21 @@ function generatePassword(length = 8) {
   return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
+// Vérifie l'abonnement : JWT valide OU date d'expiration future
 function hasActiveSubscription(user) {
-  if (!user.TokenAbonemment) return false;
-  if (!user.tokenDateAbonnementExpiresAt) return false;
-  return new Date(user.tokenDateAbonnementExpiresAt) > new Date();
+  // Condition 1 : date d'expiration explicite
+  if (user.tokenDateAbonnementExpiresAt) {
+    if (new Date(user.tokenDateAbonnementExpiresAt) > new Date()) return true;
+  }
+  // Condition 2 : JWT d'abonnement valide
+  if (user.TokenAbonemment) {
+    try {
+      // eslint-disable-next-line no-undef
+      jwt.verify(user.TokenAbonemment, process.env.JWT_SECRET);
+      return true;
+    } catch { /* expiré */ }
+  }
+  return false;
 }
 
 // POST /livreur/apply — Soumettre une candidature
@@ -25,9 +36,21 @@ export const applyAsLivreur = async (req, res) => {
     const user = await User.findByPk(userId);
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
 
+    // DEBUG — à retirer après vérification
+    console.log('[Livreur Apply] userId:', userId,
+      '| TokenAbonemment:', user.TokenAbonemment ? 'PRESENT' : 'NULL',
+      '| tokenDateAbonnementExpiresAt:', user.tokenDateAbonnementExpiresAt,
+      '| soldNumber:', user.soldNumber
+    );
+
     if (!hasActiveSubscription(user)) {
       return res.status(403).json({
         message: 'Un abonnement BIM NEXT annuel actif est requis pour postuler comme livreur.',
+        debug: {
+          hasToken: !!user.TokenAbonemment,
+          expiresAt: user.tokenDateAbonnementExpiresAt,
+          soldNumber: user.soldNumber,
+        },
       });
     }
 
