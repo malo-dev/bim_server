@@ -605,7 +605,7 @@ export const sendSOS = async (req, res) => {
     // Email de secours
     try {
       await sendEmail({
-        to: process.env.SUPPORT_EMAIL || 'support@bimnext.com',
+        to: process.env.SUPPORT_EMAIL || 'support@bimreseau.com',
         subject: `${TYPE_LABEL[type]} — Alerte SOS livreur BIM NEXT`,
         html: `
           <h2 style="color:#DC2626">🚨 Alerte SOS Livreur</h2>

@@ -1761,7 +1761,7 @@ export const sendUserSOS = async (req, res) => {
 
     try {
       await sendEmail({
-        to: process.env.SUPPORT_EMAIL || 'support@bimnext.com',
+        to: process.env.SUPPORT_EMAIL || 'support@bimreseau.com',
         subject: emailSubject,
         html: `
           <h2 style="color:#DC2626">🚨 ${category === 'sante' ? 'Alerte Sanitaire' : 'Alerte SOS Sécurité'}</h2>
