@@ -310,6 +310,75 @@ export const rateLivreur = async (req, res) => {
   }
 };
 
+// GET /livreur/my-ratings?period=day|week|month|quarter|semester|year
+export const getMyRatings = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { period } = req.query;
+
+    const livreur = await Livreur.findOne({ where: { userId, status: 'active' } });
+    if (!livreur) return res.status(403).json({ message: 'Profil livreur actif requis' });
+
+    // Calcul de la date de début selon la période
+    let since = null;
+    if (period) {
+      const now = new Date();
+      switch (period) {
+        case 'day':      since = new Date(now.getFullYear(), now.getMonth(), now.getDate()); break;
+        case 'week':     { const d = new Date(now); d.setDate(d.getDate() - 7);      since = d; break; }
+        case 'month':    since = new Date(now.getFullYear(), now.getMonth(), 1);      break;
+        case 'quarter':  { const q = Math.floor(now.getMonth() / 3); since = new Date(now.getFullYear(), q * 3, 1); break; }
+        case 'semester': since = new Date(now.getFullYear(), now.getMonth() < 6 ? 0 : 6, 1); break;
+        case 'year':     since = new Date(now.getFullYear(), 0, 1); break;
+      }
+    }
+
+    const where = { livreurId: livreur.livreurId };
+    if (since) where.createdAt = { [Op.gte]: since };
+
+    const ratings = await LivreurRating.findAll({
+      where,
+      include: [{ model: User, as: 'rater', attributes: ['id', 'username'] }],
+      order: [['createdAt', 'DESC']],
+    });
+
+    const count  = ratings.length;
+    const avg    = count ? parseFloat((ratings.reduce((s, r) => s + r.score, 0) / count).toFixed(2)) : 0;
+
+    // Classification automatique
+    let classification, classColor;
+    if (avg >= 4.5)      { classification = 'Excellent';     classColor = '#16A34A'; }
+    else if (avg >= 3.5) { classification = 'Bien';          classColor = '#22C55E'; }
+    else if (avg >= 2.5) { classification = 'Correct';       classColor = '#F97316'; }
+    else if (avg >= 1.5) { classification = 'À améliorer';   classColor = '#EF4444'; }
+    else if (count > 0)  { classification = 'Insuffisant';   classColor = '#7F1D1D'; }
+    else                 { classification = 'Pas encore noté'; classColor = '#6B7280'; }
+
+    // Distribution par étoile
+    const distribution = [1,2,3,4,5].map(star => ({
+      star,
+      count: ratings.filter(r => r.score === star).length,
+    }));
+
+    return res.json({
+      avg,
+      count,
+      classification,
+      classColor,
+      distribution,
+      ratings: ratings.map(r => ({
+        ratingId: r.ratingId,
+        score: r.score,
+        comment: r.comment,
+        rater: r.rater?.username ?? 'Anonyme',
+        createdAt: r.createdAt,
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
 // GET /livreur/public/:userId — Profil public livreur (nb entreprises + note)
 export const getLivreurPublicProfile = async (req, res) => {
   try {

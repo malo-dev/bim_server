@@ -16,6 +16,7 @@ import {
   cancelDelivery,
   getMyDeliveries,
   getMyEarnings,
+  getMyRatings,
   sendSOS,
   resolveSOS,
   getSOSAlerts,
@@ -66,6 +67,9 @@ router.put('/:id/status', authMiddleware, updateLivreurStatus);
 
 // Notation (user)
 router.post('/:id/rate', authMiddleware, rateLivreur);
+
+// Mes évaluations (livreur)
+router.get('/my-ratings', authMiddleware, getMyRatings);
 
 // Gestion des livraisons (livreur)
 router.get('/orders/available', authMiddleware, getAvailableOrders);
