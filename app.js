@@ -28,6 +28,7 @@ import NotesRoutes from './src/routers/notes.routes.js'
 import BonusRoutes from './src/routers/bonusTrack.routes.js'
 import OrderRoutes from './src/routers/order.routes.js'
 import LivreurRoutes from './src/routers/livreur.routes.js'
+import FavoriteRoutes from './src/routers/favorite.routes.js'
 import path from 'path';
 const app = express();
 dotenv.config();
@@ -119,6 +120,7 @@ app.use('/api/v1/bonus', BonusRoutes);
 app.use('/api/v1/notes', NotesRoutes)
 app.use('/api/v1/order', OrderRoutes)
 app.use('/api/v1/livreur', LivreurRoutes)
+app.use('/api/v1/favorite', FavoriteRoutes)
 
 
 app.get('/', (req, res) => {

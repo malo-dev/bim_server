@@ -1,103 +1,92 @@
 /* eslint-disable no-undef */
 export const generateOtpEmailTemplate = (username, otp) => {
-  return `
-<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Activation de votre compte</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Activation de votre compte BIM NEXT</title>
 </head>
+<body style="margin:0;padding:0;background-color:#F8F9FF;font-family:-apple-system,BlinkMacSystemFont,’Segoe UI’,Roboto,Helvetica,Arial,sans-serif;">
 
-<body style="margin:0; padding:0; font-family: Arial, Helvetica, sans-serif; background-color:#f4f6f8;">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;">
+<tr><td align="center">
 
-<table width="100%" cellpadding="0" cellspacing="0" style="padding:20px;">
-<tr>
-<td align="center">
+  <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(0,71,255,0.08);">
 
-<table width="600" cellpadding="0" cellspacing="0"
-style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,0.08);">
+    <!-- HEADER -->
+    <tr>
+      <td style="background:linear-gradient(135deg,#0035C5 0%,#0047FF 100%);padding:36px 40px;text-align:center;">
+        <img src="https://bimreseau.com/wp-content/uploads/2024/11/Rectangle-1319.png"
+             alt="BIM NEXT" style="max-width:120px;display:block;margin:0 auto;border-radius:12px;"/>
+      </td>
+    </tr>
 
-<!-- HEADER -->
-<tr>
-<td style="background:#0d6efd;padding:30px;text-align:center;">
+    <!-- BODY -->
+    <tr>
+      <td style="padding:40px;">
 
-<img src="https://bimreseau.com/wp-content/uploads/2024/11/Rectangle-1319.png"
-alt="BIM NEXT"
-style="max-width:140px;margin-bottom:10px;" />
+        <p style="margin:0 0 6px;font-size:13px;color:#747688;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Bonjour,</p>
+        <h2 style="margin:0 0 20px;font-size:24px;font-weight:700;color:#1A1C1C;">${username}</h2>
 
-<h1 style="margin:0;color:#ffffff;font-size:24px;letter-spacing:1px;">
-BIM NEXT
-</h1>
+        <p style="font-size:15px;line-height:1.7;color:#434657;margin:0 0 28px;">
+          Merci de rejoindre <strong style="color:#0047FF;">BIM NEXT</strong>. Pour activer votre compte, utilisez le code de vérification ci-dessous :
+        </p>
 
-</td>
-</tr>
+        <!-- OTP BLOCK -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+        <tr><td align="center">
+          <div style="display:inline-block;background:#F0F4FF;border:1.5px solid #C4C5DA;border-radius:16px;padding:28px 40px;text-align:center;">
+            <p style="margin:0 0 8px;font-size:12px;font-weight:600;letter-spacing:0.08em;color:#747688;text-transform:uppercase;">Code de vérification</p>
+            <p style="margin:0;font-size:36px;font-weight:700;letter-spacing:10px;color:#0047FF;font-family:’Courier New’,monospace;">${otp}</p>
+          </div>
+        </td></tr>
+        </table>
 
-<!-- BODY -->
-<tr>
-<td style="padding:35px;color:#333;">
+        <!-- Timer info -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+        <tr>
+          <td style="background:#FFF8F0;border:1px solid #FFE0C0;border-radius:12px;padding:14px 20px;">
+            <p style="margin:0;font-size:14px;color:#C2410C;">
+              <strong>Valide 30 minutes.</strong> Ne partagez jamais ce code.
+            </p>
+          </td>
+        </tr>
+        </table>
 
-<h2 style="margin-top:0;font-size:20px;">
-Bonjour ${username},
-</h2>
+        <p style="font-size:13px;color:#747688;line-height:1.6;margin:0;">
+          Si vous n’avez pas créé de compte sur BIM NEXT, ignorez simplement cet email.
+        </p>
 
-<p style="font-size:16px;line-height:1.7;">
-Merci d’avoir créé un compte sur <strong>BIM NEXT</strong>.  
-Pour activer votre compte, veuillez utiliser le code OTP ci-dessous :
-</p>
+      </td>
+    </tr>
 
-<!-- OTP BOX -->
-<div style="
-background:#f0f6ff;
-border:2px dashed #0d6efd;
-padding:20px;
-margin:30px 0;
-text-align:center;
-border-radius:8px;">
+    <!-- DIVIDER -->
+    <tr>
+      <td style="padding:0 40px;">
+        <div style="height:1px;background:#E2E2E2;"></div>
+      </td>
+    </tr>
 
-<p style="
-font-size:28px;
-font-weight:bold;
-letter-spacing:6px;
-color:#0d6efd;
-margin:0;">
-${otp}
-</p>
+    <!-- FOOTER -->
+    <tr>
+      <td style="padding:24px 40px;text-align:center;">
+        <p style="margin:0 0 6px;font-size:12px;color:#A0A0A0;">
+          &copy; ${new Date().getFullYear()} BIM NEXT &mdash; Tous droits réservés
+        </p>
+        <p style="margin:0;font-size:11px;color:#C4C5DA;">
+          Ceci est un message automatique, merci de ne pas y répondre.
+        </p>
+      </td>
+    </tr>
 
-</div>
+  </table>
 
-<p style="font-size:14px;color:#555;">
-⏳ Ce code est valide pendant <strong>30 minutes</strong>.
-</p>
-
-<p style="font-size:14px;color:#777;margin-top:25px;">
-Si vous n’êtes pas à l’origine de cette demande, veuillez ignorer cet email.
-</p>
-
-</td>
-</tr>
-
-<!-- FOOTER -->
-<tr>
-<td style="background:#f1f1f1;padding:18px;text-align:center;font-size:12px;color:#777;">
-
-© ${new Date().getFullYear()} BIM NEXT — Tous droits réservés  
-<br><br>
-<strong>Ne pas répondre à cet email.</strong>  
-Ceci est un message automatique.
-
-</td>
-</tr>
-
-</table>
-
-</td>
-</tr>
+</td></tr>
 </table>
 
 </body>
-</html>
-`;
+</html>`;
 };
 
 
@@ -141,7 +130,7 @@ BIM NEXT
 <td style="padding:35px;color:#333;">
 
 <h2 style="margin-top:0;font-size:20px;">
-Votre compte est activé 🎉
+Votre compte est activé
 </h2>
 
 <p style="font-size:16px;line-height:1.7;">
@@ -487,7 +476,7 @@ BIM NEXT
 <td style="padding:35px;color:#333;">
 
 <h2 style="margin-top:0;font-size:20px;">
-Recharge confirmée ✅
+Recharge confirmée
 </h2>
 
 <p style="font-size:16px;line-height:1.7;">
@@ -644,7 +633,7 @@ export const generateProjectReceivedEmailTemplateValue = (username, projectTitle
     <!-- HEADER -->
     <div class="header">
       <img src="https://bimreseau.com/wp-content/uploads/2024/11/Rectangle-1319.png" alt="BIM NEXT" />
-      <h1>Projet reçu ✅</h1>
+      <h1>Projet reçu</h1>
     </div>
 
     <!-- BODY -->

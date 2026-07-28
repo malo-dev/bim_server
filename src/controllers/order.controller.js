@@ -246,10 +246,10 @@ export const payOrderAtDelivery = async (req, res) => {
 
     // 9. Notifications
     const notifRows = [
-      { title: "Paiement réussi ✅", message: `Paiement de ${totalAmount} EC pour la commande ${orderNumber}.`, type: "SUCCESS", userId: sender.id },
+      { title: "Paiement réussi ", message: `Paiement de ${totalAmount} EC pour la commande ${orderNumber}.`, type: "SUCCESS", userId: sender.id },
     ];
     if (livreurUser && commission > 0) {
-      notifRows.push({ title: "Commission reçue 💰", message: `${commission} EC de commission pour la livraison ${orderNumber}.`, type: "SUCCESS", userId: livreurUser.id });
+      notifRows.push({ title: "Commission reçue ", message: `${commission} EC de commission pour la livraison ${orderNumber}.`, type: "SUCCESS", userId: livreurUser.id });
     }
     await Notification.bulkCreate(notifRows, { transaction: t });
 

@@ -8,24 +8,12 @@ const ProductCategory = sequelize.define(
       type: DataTypes.INTEGER,
       primaryKey: true,
       allowNull: false,
-      references: {
-        model: 'products',
-        key: 'productId',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'CASCADE',
     },
 
     categoryId: {
       type: DataTypes.INTEGER,
       primaryKey: true,
       allowNull: false,
-      references: {
-        model: 'categories',
-        key: 'categoryId',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'CASCADE',
     },
   },
   {

@@ -21,45 +21,21 @@ const Order = sequelize.define(
     userId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: User,
-        key: "id",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
     companyId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: "companies",
-        key: "companyId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "RESTRICT",
     },
 
     productId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: {
-        model: "products", // remplacer par la table réelle des produits
-        key: "productId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "RESTRICT",
     },
 
     branchTrackId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: "branch_tracks",
-        key: "branchTrackId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
     quantity: {
@@ -124,9 +100,6 @@ const Order = sequelize.define(
     livreurId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: { model: "livreurs", key: "livreurId" },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
     estimatedMinutes: {

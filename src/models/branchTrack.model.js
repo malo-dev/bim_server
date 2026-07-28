@@ -27,12 +27,6 @@ const BranchTrack = sequelize.define(
     commerceId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: "commerces",
-        key: "commerceId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
     imageUrl: {

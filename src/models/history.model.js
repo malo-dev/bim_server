@@ -48,12 +48,6 @@ const History = sequelize.define(
     userId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: "users",
-        key: "id",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "CASCADE",
     },
   },
   {

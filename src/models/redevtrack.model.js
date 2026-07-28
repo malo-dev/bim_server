@@ -16,12 +16,6 @@ const RedevTrack = sequelize.define(
     productId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: {
-        model: Product,
-        key: 'productId',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'CASCADE',
     },
 
     customerName: {
@@ -46,23 +40,11 @@ const RedevTrack = sequelize.define(
     commerceId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: Commerce,
-        key: 'commerceId',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'SET NULL',
     },
 
     branchTrackId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: 'branchTracks',
-        key: 'branchTrackId',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'SET NULL',
     },
 
     dueDate: {

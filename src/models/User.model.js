@@ -69,11 +69,11 @@ const User = sequelize.define(
       allowNull: true,
     },
     refreshToken: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT,
       allowNull: true,
     },
-    token: {             
-      type: DataTypes.STRING,
+    token: {
+      type: DataTypes.TEXT,
       allowNull: true,
     },
     TokenAbonemment: {    
@@ -144,22 +144,14 @@ maxTransfertParJour: {
     commerceId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: 'commerces',
-        key: 'commerceId',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'SET NULL',
     },
     branchTrackId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: 'branchTracks',
-        key: 'branchTrackId',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'SET NULL',
+    },
+    privacyAcceptedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
     },
     expoPushToken: {
       type: DataTypes.STRING,

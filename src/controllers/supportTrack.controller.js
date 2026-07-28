@@ -137,38 +137,32 @@ export const createSupportTrack = async (req, res) => {
 
     const imageUrl = req.file ? `/images/${req.file.filename}` : null;
 
-
-
-
-    try {
-    await mailer.sendMail({
-      from: 'noreply@bimreseau.com',
-      to: req.body.email,
-      subject: "Ticket support reçu - BIM NEXT",
-      html: generateProjectReceivedEmailTemplateValue(
-        req.body.sujet,
-        req.body.description,
-        new Date().toLocaleString()
-      ),
-    });
-} catch (mailError) {
-  console.error("Erreur envoi mail :", mailError.message);
-  return res.status(400).json({
-    message: `Impossible d'envoyer le mail à ${req.body.email}. Vérifiez l'adresse.`,
-    error: mailError.message,
-  });
-}
-
-
+    // Créer le ticket en premier — l'email est secondaire
     const support = await SupportTrack.create({
-      sujet: req.body.sujet,
-      email: req.body.email,
-      description: req.body.description,
-      id: Number(req.body.id),
-      commerceId: req.body.commerceId ? Number(req.body.commerceId) : null,
+      sujet:         req.body.sujet,
+      email:         req.body.email,
+      description:   req.body.description,
+      id:            Number(req.body.id),
+      commerceId:    req.body.commerceId    ? Number(req.body.commerceId)    : null,
       branchTrackId: req.body.branchTrackId ? Number(req.body.branchTrackId) : null,
       imageUrl,
     });
+
+    // Email de confirmation — non bloquant
+    try {
+      await mailer.sendMail({
+        from:    'noreply@bimreseau.com',
+        to:      req.body.email,
+        subject: 'Ticket support reçu - BIM NEXT',
+        html:    generateProjectReceivedEmailTemplateValue(
+          req.body.sujet,
+          req.body.description,
+          new Date().toLocaleString()
+        ),
+      });
+    } catch (mailError) {
+      console.error('⚠️  Mail non envoyé (ticket créé quand même) :', mailError.message);
+    }
 
     res.status(201).json({
       message: 'Message créé avec succès',

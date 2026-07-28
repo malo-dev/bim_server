@@ -39,36 +39,18 @@ const TransactionRetrait = sequelize.define(
     id: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: {
-        model: 'users',
-        key: 'id',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'CASCADE',
       comment: "Référence de l'utilisateur",
     },
 
     branchTrackId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: 'branchTracks',
-        key: 'branchTrackId',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'SET NULL',
       comment: 'Référence du suivi de branche',
     },
 
     commerceId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: 'commerces',
-        key: 'commerceId',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'SET NULL',
       comment: 'Référence du commerce',
     },
   },

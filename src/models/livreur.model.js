@@ -10,16 +10,10 @@ const Livreur = sequelize.define('Livreur', {
   userId: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    references: { model: 'users', key: 'id' },
-    onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
   },
   companyId: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    references: { model: 'companies', key: 'companyId' },
-    onDelete: 'SET NULL',
-    onUpdate: 'CASCADE',
   },
   telephone: {
     type: DataTypes.STRING(30),

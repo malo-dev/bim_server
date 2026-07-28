@@ -10,9 +10,6 @@ const UserSOS = sequelize.define('UserSOS', {
   userId: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    references: { model: 'users', key: 'id' },
-    onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
   },
   category: {
     type: DataTypes.ENUM('securite', 'sante'),

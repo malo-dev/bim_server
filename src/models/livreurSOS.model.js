@@ -10,9 +10,6 @@ const LivreurSOS = sequelize.define('LivreurSOS', {
   livreurId: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    references: { model: 'livreurs', key: 'livreurId' },
-    onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
   },
   type: {
     type: DataTypes.ENUM('suspect', 'urgence', 'secours'),

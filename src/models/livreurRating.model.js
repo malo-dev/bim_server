@@ -10,14 +10,10 @@ const LivreurRating = sequelize.define('LivreurRating', {
   livreurId: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    references: { model: 'livreurs', key: 'livreurId' },
-    onDelete: 'CASCADE',
   },
   userId: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    references: { model: 'users', key: 'id' },
-    onDelete: 'CASCADE',
   },
   score: {
     type: DataTypes.INTEGER,

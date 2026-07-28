@@ -29,6 +29,7 @@ import Order from './order.model.js';
 
 import Notes from './notes.model.js';
 import Livreur from './livreur.model.js';
+import Favorite from './favorite.model.js';
 import LivreurRating from './livreurRating.model.js';
 import LivreurSOS from './livreurSOS.model.js';
 import UserSOS from './userSOS.model.js';
@@ -253,6 +254,10 @@ Livreur.hasMany(LivreurSOS,   { foreignKey: 'livreurId', as: 'alerts',  ...CASCA
 UserSOS.belongsTo(User, { foreignKey: 'userId', as: 'user', ...CASCADE });
 User.hasMany(UserSOS,   { foreignKey: 'userId', as: 'sosAlerts', ...CASCADE });
 
+// ================= FAVORIS =================
+
+Favorite.belongsTo(Product, { foreignKey: 'productId', as: 'product', ...CASCADE });
+
 export {
   User,
   Role,
@@ -285,4 +290,5 @@ export {
   LivreurRating,
   LivreurSOS,
   UserSOS,
+  Favorite,
 };

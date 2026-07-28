@@ -6,7 +6,11 @@ import {getDateRangeByPeriod} from '../utils/getDateRangeByPeriod.util.js';
 
 export const getAllNotifications = async (req, res) => {
   try {
-    const { search, commerceId, userId, branchTrackId, paginate = "false", page = 1, pageSize = 20, filters } = req.query;
+    const {
+      search, commerceId, userId, branchTrackId,
+      paginate = "false", page = 1, pageSize = 20,
+      filters, isRead, sortOrder = "desc",
+    } = req.query;
 
     const parsedFilters = parseFiltersConvert(Array.isArray(filters) ? filters : [filters]);
 
@@ -22,37 +26,19 @@ export const getAllNotifications = async (req, res) => {
       whereClause.type = parsedFilters.type;
     }
 
-    // Filtre par commerce
-    
-
-   
-
-     if (commerceId && branchTrackId ) {
-      whereClause[Op.and] = [
-        {
-          [Op.or]: [
-            { branchTrackId },
-          ],
-        },
-      ];
-    }
-    const id = userId
-
-       if (id ) {
-      whereClause[Op.and] = [
-        {
-          [Op.or]: [
-            {userId:id},
-            
-          ],
-        },
-      ];
+    if (commerceId && branchTrackId) {
+      whereClause[Op.and] = [{ [Op.or]: [{ branchTrackId }] }];
     }
 
-    
+    const id = userId;
+    if (id) {
+      whereClause[Op.and] = [{ [Op.or]: [{ userId: id }] }];
+    }
 
-    // Filtre lecture
-    if (parsedFilters.isRead !== null) {
+    // Filtre lecture — param direct isRead prioritaire sur parsedFilters
+    if (isRead !== undefined && isRead !== null && isRead !== '') {
+      whereClause.isRead = isRead === 'true';
+    } else if (parsedFilters.isRead !== null) {
       whereClause.isRead = parsedFilters.isRead;
     }
 
@@ -62,7 +48,7 @@ export const getAllNotifications = async (req, res) => {
         ...(whereClause[Op.and] || []),
         {
           [Op.or]: [
-            { title: { [Op.like]: `%${search}%` } },
+            { title:   { [Op.like]: `%${search}%` } },
             { message: { [Op.like]: `%${search}%` } },
           ],
         },
@@ -77,9 +63,11 @@ export const getAllNotifications = async (req, res) => {
       }
     }
 
+    const sortDir = sortOrder.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
     const findOptions = {
       where: whereClause,
-      order: [["createdAt", "DESC"]],
+      order: [["createdAt", sortDir]],
     };
 
     if (isPaginate) {

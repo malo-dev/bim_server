@@ -15,45 +15,21 @@ const Notes = sequelize.define(
     userId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: User,
-        key: "id",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
     companyId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: {
-        model: "companies",
-        key: "companyId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "RESTRICT",
     },
 
     productId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: "products",
-        key: "productId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "RESTRICT",
     },
 
     branchTrackId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: "branch_tracks",
-        key: "branchTrackId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
     totalStars: {

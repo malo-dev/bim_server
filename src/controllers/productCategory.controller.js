@@ -150,3 +150,30 @@ export const deleteproductCategory = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// Dissocier un produit d'une catégorie (par productId + categoryId dans le body)
+export const unlinkProductCategory = async (req, res) => {
+  try {
+    const { productId, categoryId } = req.body;
+    if (!productId || !categoryId) {
+      return res.status(400).json({ message: 'productId et categoryId sont requis' });
+    }
+    const item = await ProductCategory.findOne({ where: { productId, categoryId } });
+    if (!item) return res.status(404).json({ message: 'Association introuvable' });
+    await item.destroy();
+    res.status(200).json({ message: 'Association supprimée' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Lister les produits d'une catégorie
+export const getProductsByCategoryId = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const links = await ProductCategory.findAll({ where: { categoryId: id } });
+    res.status(200).json({ data: links.map(l => l.productId) });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

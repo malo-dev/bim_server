@@ -19,23 +19,11 @@ const Bonus = sequelize.define(
     userId: {
       type: DataTypes.INTEGER,
       allowNull: true, // requis pour SET NULL
-      references: {
-        model: "users", // nom exact de la table
-        key: "id",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
     companyId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: {
-        model: "companies", // nom exact de la table
-        key: "companyId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "RESTRICT",
     },
   },
   {

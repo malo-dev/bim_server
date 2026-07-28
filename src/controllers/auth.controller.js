@@ -19,7 +19,7 @@ const generateOtp = () => {
 
 
 const register = async (req, res) => {
-  const { username, email, password } = req.body;
+  const { username, email, password, privacyAcceptedAt } = req.body;
   try {
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
@@ -36,7 +36,8 @@ const register = async (req, res) => {
       otp,
       otpExpires,
       isActive: false,
-      accountNumber: String(generateAccountNumber())
+      accountNumber: String(generateAccountNumber()),
+      privacyAcceptedAt: privacyAcceptedAt ? new Date(privacyAcceptedAt) : new Date()
     });
 
     
@@ -248,16 +249,18 @@ const askPasswordReset = async (req, res) => {
       );
 
     
-    await mailer.sendMail({
-      from: 'noreply@bimreseau.com',
-      to: email,
-      subject: 'Activation de votre compte Bim',
-      html: generateOtpEmailTemplate(user.username,otp),
-    });
-      return res.status(200).json({
+      // Réponse immédiate — l'email part en arrière-plan sans bloquer
+      res.status(200).json({
         message: 'Un code otp a été envoyé à votre adresse e-mail.',
-        userId : user.id
+        userId: user.id,
       });
+
+      mailer.sendMail({
+        from: 'noreply@bimreseau.com',
+        to: email,
+        subject: 'Activation de votre compte Bim',
+        html: generateOtpEmailTemplate(user.username, otp),
+      }).catch(err => console.error('⚠️  Mail OTP non envoyé :', err.message));
     }
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });

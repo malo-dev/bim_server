@@ -45,12 +45,6 @@ const TransactionRecharge = sequelize.define(
     id: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: {
-        model: 'users',
-        key: 'id',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'RESTRICT',
       comment: 'Référence de l’utilisateur',
     },
   },

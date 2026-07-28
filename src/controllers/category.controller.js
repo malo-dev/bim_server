@@ -125,37 +125,22 @@ export const createCategory = async (req, res) => {
   try {
     const { name, description, commerceId, branchTrackId } = req.body;
 
-    if (!commerceId) {
-      return res.status(409).json({
-        message: 'CommerceId est obligatoire',
-      });
-    }
+    const whereClause = { name };
+    if (commerceId) whereClause.commerceId = commerceId;
+    if (branchTrackId) whereClause.branchTrackId = branchTrackId;
 
-    const whereClause = {
-      name,
-      commerceId,
-    };
-
-    if (branchTrackId) {
-      whereClause.branchTrackId = branchTrackId;
-    } else {
-      whereClause.branchTrackId = null;
-    }
-
-    const categoryExist = await Category.findOne({
-      where: whereClause,
-    });
+    const categoryExist = await Category.findOne({ where: whereClause });
 
     if (categoryExist) {
       return res.status(409).json({
-        message: 'Cette catégorie existe déjà pour ce commerce',
+        message: 'Cette catégorie existe déjà',
       });
     }
 
     const categoryItem = await Category.create({
       name,
-      description,
-      commerceId,
+      description: description || '',
+      commerceId: commerceId || null,
       branchTrackId: branchTrackId || null,
     });
 
