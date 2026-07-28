@@ -17,6 +17,9 @@ import {
   getRechargesList,
   getRetraitsList,
   getPaiementsList,
+  approveRecharge,
+  rejectRecharge,
+  reverseRecharge,
 } from '../controllers/transaction.controller.js';
 
 import { recharge, flexpayCallback, flexpayApproved, flexpayCancel, flexpayDecline, verifyPayment } from '../controllers/recharge.controller.js'
@@ -50,5 +53,10 @@ router.delete("/transactions/:id", deleteTransactionPaiement);
 router.get("/admin/recharges", authMiddleware, getRechargesList);
 router.get("/admin/retraits", authMiddleware, getRetraitsList);
 router.get("/admin/paiements", authMiddleware, getPaiementsList);
+
+// Admin approve/reject/reverse recharge
+router.patch("/admin/recharges/:id/approve", authMiddleware, approveRecharge);
+router.patch("/admin/recharges/:id/reject",  authMiddleware, rejectRecharge);
+router.patch("/admin/recharges/:id/reverse", authMiddleware, reverseRecharge);
 
 export default router;

@@ -15,12 +15,6 @@ const ProductSold = sequelize.define(
     productId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: {
-        model: 'products',
-        key: 'productId',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'RESTRICT',
     },
 
     name: {
@@ -66,34 +60,16 @@ const ProductSold = sequelize.define(
     commerceId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: 'commerces',
-        key: 'commerceId',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'SET NULL',
     },
 
     branchTrackId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: 'branchTracks',
-        key: 'branchTrackId',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'SET NULL',
     },
 
     currencyId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: {
-        model: Currency,
-        key: 'currencyId',
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'RESTRICT',
     },
   },
   {

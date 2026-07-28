@@ -55,45 +55,21 @@ const Notification = sequelize.define(
     expeTrackId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: ExpeTrack,
-        key: "expeTrackId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
     userId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: User,
-        key: "id",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
     commerceId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: Commerce,
-        key: "commerceId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "CASCADE",
     },
 
     branchTrackId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: "branch_tracks",
-        key: "branchTrackId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
   },
   {

@@ -201,7 +201,7 @@ export const recharge = async (req, res) => {
       /* ── 13. Notification ── */
       await Notification.create(
         {
-          title:   "Recharge réussie ✅",
+          title:   "Recharge réussie ",
           message: aDejaAbonnement
             ? `Votre compte a été crédité de ${montantCredite} EC. Aucun frais prélevé.`
             : `Votre compte a été crédité de ${montantCredite} EC — abonnement annuel activé (-${fraisAbonnement} EC).`,
@@ -280,7 +280,7 @@ export const recharge = async (req, res) => {
 
         try {
           await Notification.create({
-            title:   "Échec de la recharge ❌",
+            title:   "Échec de la recharge ",
             message: `Votre paiement de ${amount} EC a été reçu mais le crédit n'a pas pu être appliqué. Contactez le support.`,
             type:    "ERREUR",
             userId:  userItem.id,
@@ -314,7 +314,7 @@ export const recharge = async (req, res) => {
     if (userItem) {
       try {
         await Notification.create({
-          title:   "Échec de la recharge ❌",
+          title:   "Échec de la recharge ",
           message: `Votre tentative de recharge de ${amount} EC n'a pas abouti. Veuillez réessayer.`,
           type:    "ERREUR",
           userId:  userItem.id,

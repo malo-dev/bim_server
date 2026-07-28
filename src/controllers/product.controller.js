@@ -1,4 +1,4 @@
-import { Category, Currency, Product, ProductSold,Company} from '../models/index.js';
+import { Category, Currency, Product, ProductSold, Company, BusinessCategory } from '../models/index.js';
 import { getDateRangeByPeriod } from '../utils/getDateRangeByPeriod.util.js';
 import { Op } from 'sequelize';
 import path from 'path';
@@ -15,7 +15,9 @@ export const getAllProducts = async (req, res) => {
       pageSize = 20,
       commerceId,
       branchTrackId,
-      companyId
+      companyId,
+      isRecommended,
+      isUpselling,
     } = req.query;
 
     const isPaginate = paginate.toLowerCase() === 'true';
@@ -24,9 +26,9 @@ export const getAllProducts = async (req, res) => {
     const offset = (currentPage - 1) * limit;
 
      const whereClause = {};
-    if (companyId) {
-   whereClause.companyId = companyId
-}
+    if (companyId) whereClause.companyId = companyId;
+    if (isRecommended === 'true') whereClause.isRecommended = true;
+    if (isUpselling === 'true') whereClause.isUpselling = true;
   
     if (commerceId) {
       whereClause.commerceId = commerceId;
@@ -74,7 +76,9 @@ export const getAllProducts = async (req, res) => {
         { model: Currency, as: 'currency' },
         { model: Category, as: 'categories', through: { attributes: [] } },
         { model: ProductSold, as: 'productSold' },
-        { model: Company, as: 'company', attributes: ['companyId', 'name'] },
+        { model: Company, as: 'company', attributes: ['companyId', 'name', 'businessId'], include: [
+          { model: BusinessCategory, as: 'category', attributes: ['businessId', 'name'] },
+        ]},
       ],
     };
 

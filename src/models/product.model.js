@@ -40,8 +40,7 @@ const Product = sequelize.define(
 
     description: {
       type: DataTypes.TEXT,
-      allowNull: false,
-      validate: { notEmpty: true },
+      allowNull: true,
     },
     unityMesure: {
       type: DataTypes.TEXT,
@@ -49,9 +48,8 @@ const Product = sequelize.define(
     },
 
     TVA: {
-      type: DataTypes.DECIMAL(5, 2),
+      type: DataTypes.STRING,
       allowNull: true,
-      validate: { min: 0 },
     },
 
     EAN: {
@@ -60,9 +58,8 @@ const Product = sequelize.define(
     },
 
     qty: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      validate: { min: 0 },
+      type: DataTypes.DECIMAL(15, 4),
+      allowNull: true,
     },
 
     threshold: {  // renommé pour cohérence
@@ -91,47 +88,35 @@ const Product = sequelize.define(
 
     currencyId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
-      references: {
-        model: Currency,
-        key: "currencyId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "RESTRICT",
+      allowNull: true,
     },
 
     commerceId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: "commerces",
-        key: "commerceId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
      companyId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: "companies",
-        key: "companyId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
 
     branchTrackId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: "branchTracks",
-        key: "branchTrackId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
+    },
+
+    isRecommended: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+
+    isUpselling: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
   },
   {

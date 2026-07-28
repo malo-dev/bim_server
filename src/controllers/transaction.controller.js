@@ -298,19 +298,19 @@ export const createRetrait = async (req, res) => {
     await Notification.bulkCreate(
       [
         {
-          title: "Retrait réussi ✅",
+          title: "Retrait réussi ",
           message: `Votre retrait de ${retraitAmount}$ a été effectué. Frais: ${fraisTotal}$ (total débité: ${totalDebit}$).`,
           type: "SUCCESS",
           userId: userSender.id,
         },
         {
-          title: "Nouveau retrait 💰",
+          title: "Nouveau retrait ",
           message: `Vous avez reçu un retrait de ${retraitAmount}$ + frais agent ${fraisAgent}$.`,
           type: "INFO",
           userId: userAgent.id,
         },
         {
-          title: "Frais retrait reçu 💰",
+          title: "Frais retrait reçu ",
           message: `Frais de ${fraisOwner}$ crédité sur le compte BIM Bank.`,
           type: "INFO",
           userId: bimBank.id,
@@ -336,11 +336,11 @@ export const createRetrait = async (req, res) => {
 
     // ── Push notifications + Socket temps réel ──
     const pushPayloadSender = {
-      title: "Retrait réussi ✅",
+      title: "Retrait réussi ",
       message: `Votre retrait de ${retraitAmount}$ a été effectué. Total débité: ${totalDebit}$.`,
     };
     const pushPayloadAgent = {
-      title: "Nouveau retrait 💰",
+      title: "Nouveau retrait ",
       message: `Retrait de ${retraitAmount}$ + frais agent ${fraisAgent}$ crédités.`,
     };
 
@@ -372,7 +372,7 @@ export const createRetrait = async (req, res) => {
 
      if (req?.user?.id) {
       await Notification.create({
-        title: "Échec du retrait ❌",
+        title: "Échec du retrait ",
         message: `Votre tentative de recharge de ${Number(
           amount || 0
         )}$ n’a pas abouti. Veuillez réessayer ou contacter le support.`,
@@ -554,13 +554,13 @@ export const createTransfert = async (req, res) => {
             ⚠️  Ne jamais mettre "ERROR" (sans accent) ── */
     const notificationsToCreate = [
       {
-        title:   "Transfert envoyé ✅",
+        title:   "Transfert envoyé ",
         message: `Vous avez transféré ${transferAmount} EC à ${receiver.username}.`,
         type:    "SUCCESS",   // ✅
         userId:  sender.id,
       },
       {
-        title:   "Fonds reçus 💰",
+        title:   "Fonds reçus ",
         message: `Vous avez reçu ${finalReceiverAmount} EC de ${sender.username}.`,
         type:    "SUCCESS",   // ✅
         userId:  receiver.id,
@@ -569,7 +569,7 @@ export const createTransfert = async (req, res) => {
 
     if (fraisAbonnement === 1) {
       notificationsToCreate.push({
-        title:   "Abonnement activé 🎉",
+        title:   "Abonnement activé ",
         message: "1 EC a été déduit pour activer votre abonnement.",
         type:    "INFO",      // ✅
         userId:  receiver.id,
@@ -606,11 +606,11 @@ export const createTransfert = async (req, res) => {
 
     /* ── Push notifications + Socket temps réel ── */
     const pushSender = {
-      title: "Transfert envoyé ✅",
+      title: "Transfert envoyé ",
       message: `Vous avez transféré ${transferAmount} EC à ${receiver.username}.`,
     };
     const pushReceiver = {
-      title: "Fonds reçus 💰",
+      title: "Fonds reçus ",
       message: `Vous avez reçu ${finalReceiverAmount} EC de ${sender.username}.`,
     };
 
@@ -696,7 +696,7 @@ export const createTransfert = async (req, res) => {
          ⚠️  "ERREUR" avec accent — seule valeur ENUM valide pour les erreurs ── */
       try {
         await Notification.create({
-          title:   "Échec du transfert ❌",
+          title:   "Échec du transfert ",
           message: `Votre tentative d'envoi de ${req.body?.amount} EC a échoué.`,
           type:    "ERREUR",  // ✅ accent obligatoire
           userId:  sender.id,
@@ -1052,13 +1052,13 @@ export const createPaiement = async (req, res) => {
     await Notification.bulkCreate(
       [
         {
-          title:   "Paiement réussi ✅",
+          title:   "Paiement réussi ",
           message: `Votre paiement de ${paiementAmount} EC pour la commande ${orderNumber} a été effectué.`,
           type:    "SUCCESS",   // ✅
           userId:  sender.id,
         },
         {
-          title:   "Commande payée 🛒",
+          title:   "Commande payée ",
           message: `Une nouvelle commande ${orderNumber} a été payée.`,
           type:    "INFO",      // ✅
           userId:  ownerItem.id,
@@ -1103,11 +1103,11 @@ export const createPaiement = async (req, res) => {
 
     /* ── Push notifications + Socket temps réel ── */
     const pushPaiementSender = {
-      title: "Paiement réussi ✅",
+      title: "Paiement réussi ",
       message: `Votre paiement de ${paiementAmount} EC pour la commande ${orderNumber} a été effectué.`,
     };
     const pushPaiementOwner = {
-      title: "Nouvelle commande payée 🛒",
+      title: "Nouvelle commande payée ",
       message: `Commande ${orderNumber} — ${paiementAmount} EC reçus.`,
     };
 
@@ -1169,7 +1169,7 @@ export const createPaiement = async (req, res) => {
          ⚠️  "ERREUR" avec accent — jamais "ERROR" ── */
       try {
         await Notification.create({
-          title:   "Échec du paiement ❌",
+          title:   "Échec du paiement ",
           message: `Votre tentative de paiement de ${req.body?.amount} EC n'a pas abouti.`,
           type:    "ERREUR",  // ✅ accent obligatoire
           userId:  sender.id,
@@ -1512,3 +1512,134 @@ export const getPaiementsList = async (req, res) => {
   }
 };
 
+
+// ─── Approuver une recharge (crédite le compte) ────────────────────────────────
+export const approveRecharge = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const recharge = await TransactionRecharge.findByPk(id, {
+      include: [{ model: User, as: 'user' }],
+    });
+
+    if (!recharge) return res.status(404).json({ message: 'Recharge introuvable' });
+    if (recharge.status !== 'pending') {
+      return res.status(400).json({ message: `Recharge déjà traitée (status: ${recharge.status})` });
+    }
+
+    const user = recharge.user;
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+    const current = parseFloat(user.soldNumber ?? 0);
+    const newBalance = current + parseFloat(recharge.amount);
+
+    await Promise.all([
+      recharge.update({ status: 'success' }),
+      user.update({ soldNumber: newBalance }),
+    ]);
+
+    try {
+      if (user.expoPushToken) {
+        await sendPushNotification(
+          user.expoPushToken,
+          'Recharge approuvée ✅',
+          `Votre recharge de ${recharge.amount} EC a été approuvée. Nouveau solde : ${newBalance.toFixed(2)} EC`,
+          { type: 'recharge_approved', rechargeId: recharge.transactionRechargeId }
+        );
+      }
+    } catch (_) { /* push non bloquant */ }
+
+    return res.status(200).json({ message: `Recharge de ${recharge.amount} EC approuvée`, newBalance, recharge });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// ─── Rejeter une recharge (envoie notification + email) ───────────────────────
+export const rejectRecharge = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason = "Demande refusée par l'administrateur" } = req.body;
+
+    const recharge = await TransactionRecharge.findByPk(id, {
+      include: [{ model: User, as: 'user' }],
+    });
+
+    if (!recharge) return res.status(404).json({ message: 'Recharge introuvable' });
+    if (recharge.status !== 'pending') {
+      return res.status(400).json({ message: `Recharge déjà traitée (status: ${recharge.status})` });
+    }
+
+    await recharge.update({ status: 'failed' });
+    const user = recharge.user;
+
+    try {
+      if (user?.expoPushToken) {
+        await sendPushNotification(
+          user.expoPushToken,
+          'Recharge refusée ❌',
+          `Votre recharge de ${recharge.amount} EC a été refusée. Motif : ${reason}`,
+          { type: 'recharge_rejected', rechargeId: recharge.transactionRechargeId }
+        );
+      }
+    } catch (_) { /* push non bloquant */ }
+
+    try {
+      if (user?.email) {
+        await mailer({
+          to: user.email,
+          subject: 'Demande de recharge refusée — BIM',
+          html: `<p>Bonjour <strong>${user.username ?? user.email}</strong>,</p>
+                 <p>Votre demande de recharge de <strong>${recharge.amount} EC</strong> (réf. ${recharge.reference}) a été <strong>refusée</strong>.</p>
+                 <p><strong>Motif :</strong> ${reason}</p>
+                 <p>Si vous pensez qu'il s'agit d'une erreur, contactez notre support.</p>
+                 <p>— L'équipe BIM</p>`,
+        });
+      }
+    } catch (_) { /* email non bloquant */ }
+
+    return res.status(200).json({ message: 'Recharge refusée', recharge });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// ─── Désapprouver une recharge (retire le montant du compte) ─────────────────
+export const reverseRecharge = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const recharge = await TransactionRecharge.findByPk(id, {
+      include: [{ model: User, as: 'user' }],
+    });
+
+    if (!recharge) return res.status(404).json({ message: 'Recharge introuvable' });
+    if (recharge.status !== 'success') {
+      return res.status(400).json({ message: `Seules les recharges approuvées peuvent être annulées (status actuel: ${recharge.status})` });
+    }
+
+    const user = recharge.user;
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+    const current = parseFloat(user.soldNumber ?? 0);
+    const newBalance = Math.max(0, current - parseFloat(recharge.amount));
+
+    await Promise.all([
+      recharge.update({ status: 'pending' }),
+      user.update({ soldNumber: newBalance }),
+    ]);
+
+    try {
+      if (user.expoPushToken) {
+        await sendPushNotification(
+          user.expoPushToken,
+          'Recharge annulée ⚠️',
+          `Votre recharge de ${recharge.amount} EC a été annulée par l'administrateur. Nouveau solde : ${newBalance.toFixed(2)} EC`,
+          { type: 'recharge_reversed', rechargeId: recharge.transactionRechargeId }
+        );
+      }
+    } catch (_) { /* push non bloquant */ }
+
+    return res.status(200).json({ message: `Recharge de ${recharge.amount} EC annulée`, newBalance, recharge });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};

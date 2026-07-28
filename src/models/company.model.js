@@ -41,23 +41,11 @@ const Company = sequelize.define(
     branchTrackId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: "branch_tracks",
-        key: "branchTrackId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
       businessId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: "businessCategories",
-        key: "businessId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
 

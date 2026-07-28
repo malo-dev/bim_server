@@ -140,7 +140,7 @@ const creditBim = async (userId, amount, ownerEmailRef) => {
 
     await Notification.create(
       {
-        title:   "Recharge réussie ✅",
+        title:   "Recharge réussie ",
         message: aDejaAbonnement
           ? `Votre compte a été crédité de ${montantCredite} EC. Aucun frais prélevé.`
           : `Votre compte a été crédité de ${montantCredite} EC — abonnement annuel activé (-${fraisAbonnement} EC).`,
@@ -318,7 +318,7 @@ export const recharge = async (req, res) => {
     if (userItem) {
       try {
         await Notification.create({
-          title: "Échec de la recharge ❌",
+          title: "Échec de la recharge ",
           message: `Votre tentative de recharge de ${amount} EC n'a pas abouti. Veuillez réessayer.`,
           type: "ERREUR", userId: userItem.id,
         });
@@ -363,7 +363,7 @@ export const flexpayCallback = async (req, res) => {
       await rechargeRecord.update({ status: "failed" });
       try {
         await Notification.create({
-          title: "Recharge annulée ❌",
+          title: "Recharge annulée ",
           message: "Vous avez annulé la recharge. Aucun montant n'a été débité.",
           type: "ERREUR", userId: rechargeRecord.id,
         });
@@ -463,7 +463,7 @@ export const flexpayDecline = async (req, res) => {
       await record.update({ status: "failed" });
       emitToUser(record.id, "recharge:declined", { reference });
       await Notification.create({
-        title:   "Paiement refusé ❌",
+        title:   "Paiement refusé ",
         message: "Votre paiement par carte a été refusé. Veuillez réessayer.",
         type:    "ERREUR",
         userId:  record.id,

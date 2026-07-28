@@ -37,23 +37,11 @@ const FeedBackTrack = sequelize.define(
     commerceId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: "commerces",
-        key: "commerceId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
     branchTrackId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: "branch_tracks",
-        key: "branchTrackId",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
   },
   {

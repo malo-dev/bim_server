@@ -27,12 +27,6 @@ const Commerce = sequelize.define(
     userId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: {
-        model: User,
-        key: "id",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "SET NULL",
     },
 
     imageUrl: {

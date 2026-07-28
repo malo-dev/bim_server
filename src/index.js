@@ -12,7 +12,9 @@ const httpServer = createServer(app);
 // Initialiser Socket.io sur le serveur HTTP
 initSocket(httpServer);
 
-sequelize.sync()
+sequelize.query('SET FOREIGN_KEY_CHECKS=0')
+  .then(() => sequelize.sync())
+  .then(() => sequelize.query('SET FOREIGN_KEY_CHECKS=1'))
   .then(async () => {
     console.log('✅ Base de données connectée');
 
@@ -71,6 +73,14 @@ sequelize.sync()
       console.log('✅ companies.commissionRate ajouté');
     } catch { /* déjà existant */ }
     try {
+      await sequelize.query("ALTER TABLE products ADD COLUMN isRecommended TINYINT(1) NOT NULL DEFAULT 0");
+      console.log('✅ products.isRecommended ajouté');
+    } catch { /* déjà existant */ }
+    try {
+      await sequelize.query("ALTER TABLE products ADD COLUMN isUpselling TINYINT(1) NOT NULL DEFAULT 0");
+      console.log('✅ products.isUpselling ajouté');
+    } catch { /* déjà existant */ }
+    try {
       await sequelize.query(`
         CREATE TABLE IF NOT EXISTS user_sos (
           sosId INT AUTO_INCREMENT PRIMARY KEY,
@@ -113,6 +123,23 @@ sequelize.sync()
       console.log('✅ user_sos.contactPhone ajouté');
     } catch { /* déjà existant */ }
     try {
+      await sequelize.query("ALTER TABLE users ADD COLUMN privacyAcceptedAt DATETIME NULL");
+      console.log('✅ users.privacyAcceptedAt ajouté');
+    } catch { /* déjà existant */ }
+    try {
+      await sequelize.query(`CREATE TABLE IF NOT EXISTS user_favorites (
+        favoriteId INT AUTO_INCREMENT PRIMARY KEY,
+        userId INT NOT NULL,
+        productId INT NOT NULL,
+        createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY user_product_unique (userId, productId),
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (productId) REFERENCES products(productId) ON DELETE CASCADE
+      )`);
+      console.log('✅ user_favorites créée');
+    } catch { /* déjà existant */ }
+    try {
       await sequelize.query(`
         CREATE TABLE IF NOT EXISTS livreur_sos (
           sosId INT AUTO_INCREMENT PRIMARY KEY,
@@ -130,6 +157,14 @@ sequelize.sync()
       console.log('✅ livreur_sos créée');
     } catch { /* déjà existant */ }
 
+    httpServer.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} déjà utilisé. Libérez-le avec: fuser -k ${PORT}/tcp`);
+        process.exit(1);
+      } else {
+        throw err;
+      }
+    });
     httpServer.listen(PORT, () => {
       console.log(`🚀 Serveur lancé sur http://localhost:${PORT}`);
       console.log(`🔌 Socket.io actif sur ws://localhost:${PORT}`);

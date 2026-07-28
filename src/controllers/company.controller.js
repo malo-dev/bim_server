@@ -220,42 +220,30 @@ export const updateCompany = async (req, res) => {
 
     
     let imageUrl = company.imageUrl;
+    let logoUrl = company.logo;
 
     // 🔁 UPDATE LOGO
-    if (req.files?.logo) {
+    if (req.files?.logo?.[0]) {
       if (company.logo) {
-        const oldPath = path.join(
-          'public',
-          company.logo.replace('/images/', 'images/')
-        );
-
-        if (fs.existsSync(oldPath)) {
-          fs.unlinkSync(oldPath);
-        }
+        const oldPath = path.join('public', company.logo.replace('/images/', 'images/'));
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
       }
-
-     
+      logoUrl = `/images/${req.files.logo[0].filename}`;
     }
 
     // 🔁 UPDATE IMAGE
-    if (req.files?.image) {
+    if (req.files?.image?.[0]) {
       if (company.imageUrl) {
-        const oldImagePath = path.join(
-          'public',
-          company.imageUrl.replace('/images/', 'images/')
-        );
-
-        if (fs.existsSync(oldImagePath)) {
-          fs.unlinkSync(oldImagePath);
-        }
+        const oldImagePath = path.join('public', company.imageUrl.replace('/images/', 'images/'));
+        if (fs.existsSync(oldImagePath)) fs.unlinkSync(oldImagePath);
       }
-
       imageUrl = `/images/${req.files.image[0].filename}`;
     }
 
     await company.update({
       ...req.body,
       imageUrl,
+      logo: logoUrl,
     });
 
     res.status(200).json({
