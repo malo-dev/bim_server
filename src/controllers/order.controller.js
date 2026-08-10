@@ -356,12 +356,17 @@ export const updateOrder = async (req, res) => {
 
     // Notifier en temps réel tous les abonnés de cette commande
     if (req.body.status && order.orderNumber) {
-      emitOrderUpdate(order.orderNumber, {
+      const payload = {
         orderNumber: order.orderNumber,
         status: req.body.status,
         paymentStatus: order.paymentStatus,
         updatedAt: new Date().toISOString(),
-      });
+      };
+      emitOrderUpdate(order.orderNumber, payload);
+
+      // Notifier directement l'utilisateur dans sa room privée
+      const { emitToUser } = await import('../services/socket.service.js');
+      emitToUser(String(order.userId), 'order:status_updated', payload);
     }
 
     res.json({ message: "Commande mise à jour avec succès", order });
