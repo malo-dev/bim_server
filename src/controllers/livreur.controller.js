@@ -726,3 +726,170 @@ export const getSOSAlerts = async (req, res) => {
     res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN BIM — endpoints réservés aux super-admins BIM (pas company admin)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /livreur/admin/all — Tous les livreurs/candidatures (BIM super admin)
+export const adminGetAllLivreurs = async (req, res) => {
+  try {
+    const { status, companyId, search, page = 1, pageSize = 20 } = req.query;
+    const limit  = parseInt(pageSize, 10);
+    const offset = (parseInt(page, 10) - 1) * limit;
+
+    const where = {};
+    if (status)    where.status    = status;
+    if (companyId) where.companyId = companyId;
+
+    const userWhere = {};
+    if (search) {
+      const { Op } = await import('sequelize');
+      userWhere[Op.or] = [
+        { username: { [Op.like]: `%${search}%` } },
+        { email:    { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const { rows, count } = await Livreur.findAndCountAll({
+      where,
+      include: [
+        { model: User, as: 'user', attributes: ['id', 'username', 'email', 'telephone', 'imageUrl'], where: Object.keys(userWhere).length ? userWhere : undefined },
+        { model: Company, as: 'company', attributes: ['companyId', 'name'], required: false },
+      ],
+      order: [['createdAt', 'DESC']],
+      limit,
+      offset,
+      distinct: true,
+    });
+
+    return res.json({ data: rows, total: count, page: parseInt(page, 10), totalPages: Math.ceil(count / limit) });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// PUT /livreur/admin/:id/status — Valider/rejeter/activer une candidature (BIM super admin)
+// Même logique que updateLivreurStatus mais sans vérification entreprise
+export const adminUpdateLivreurStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['pending', 'accepted', 'rejected', 'active'].includes(status)) {
+      return res.status(400).json({ message: 'Statut invalide' });
+    }
+
+    const livreur = await Livreur.findByPk(id, {
+      include: [{ model: User, as: 'user', attributes: ['id', 'username', 'email'] }],
+    });
+    if (!livreur) return res.status(404).json({ message: 'Livreur introuvable' });
+
+    const updates = { status };
+    let plainPassword = null;
+
+    if (status === 'active') {
+      plainPassword = generatePassword();
+      updates.livreurPassword = await bcrypt.hash(plainPassword, 10);
+    }
+
+    await livreur.update(updates);
+
+    const user = livreur.user;
+    const notifMap = {
+      accepted: { subject: 'Candidature livreur acceptée',     msg: 'Votre candidature a été acceptée. Vous serez bientôt engagé comme livreur.' },
+      rejected: { subject: 'Candidature livreur refusée',      msg: 'Malheureusement votre candidature n\'a pas été retenue cette fois.' },
+      active:   { subject: 'Vous êtes maintenant livreur BIM NEXT !',
+                  msg: `Félicitations ! Vous êtes officiellement engagé comme livreur.\n\nVotre mot de passe livreur : <strong>${plainPassword}</strong>\n\nConnectez-vous via le bouton "Espace Livreur" dans l'app BIM NEXT.` },
+    };
+
+    const notif = notifMap[status];
+    if (notif && user) {
+      await sendEmail({
+        to: user.email,
+        subject: `BIM NEXT — ${notif.subject}`,
+        html: `<h2 style="color:#0353CC">${notif.subject}</h2><p>Bonjour <strong>${user.username}</strong>,</p><p>${notif.msg}</p><br/><p style="color:#888">— L'équipe BIM NEXT</p>`,
+      });
+      emitToUser(String(user.id), 'notification', { title: notif.subject, body: notif.msg.replace(/<[^>]*>/g, ''), type: 'livreur' });
+    }
+
+    return res.json({ message: 'Statut mis à jour', livreur, plainPassword: plainPassword ?? undefined });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// POST /livreur/admin/create — Créer directement un compte livreur (BIM super admin)
+// Crée/trouve le User BIM, puis crée le Livreur avec statut 'active' et un mot de passe généré
+export const adminCreateLivreur = async (req, res) => {
+  try {
+    const { username, email, telephone, companyId, motivation } = req.body;
+
+    if (!username || !email || !telephone) {
+      return res.status(400).json({ message: 'username, email et telephone sont requis' });
+    }
+
+    // Vérifier ou créer l'utilisateur BIM
+    let user = await User.findOne({ where: { email } });
+    if (!user) {
+      const tmpPassword = generatePassword(12);
+      const hashed = await bcrypt.hash(tmpPassword, 10);
+      user = await User.create({
+        username,
+        email,
+        password: hashed,
+        telephone,
+        isActive: true,
+        soldNumber: 0,
+      });
+      // Envoyer l'email d'onboarding
+      await sendEmail({
+        to: email,
+        subject: 'BIM NEXT — Votre compte a été créé',
+        html: `<h2 style="color:#0353CC">Bienvenue sur BIM NEXT !</h2>
+               <p>Bonjour <strong>${username}</strong>,</p>
+               <p>Un compte BIM NEXT a été créé pour vous.</p>
+               <p>Email : <strong>${email}</strong><br/>Mot de passe temporaire : <strong>${tmpPassword}</strong></p>
+               <p>Changez votre mot de passe à la première connexion.</p>
+               <br/><p style="color:#888">— L'équipe BIM NEXT</p>`,
+      });
+    }
+
+    // Vérifier candidature existante
+    const existing = await Livreur.findOne({ where: { userId: user.id, companyId: companyId || null } });
+    if (existing) {
+      return res.status(409).json({ message: 'Cet utilisateur est déjà livreur pour cette entreprise', livreur: existing });
+    }
+
+    // Générer le mot de passe livreur
+    const plainPassword = generatePassword();
+    const hashedLivreurPwd = await bcrypt.hash(plainPassword, 10);
+
+    const livreur = await Livreur.create({
+      userId: user.id,
+      companyId: companyId || null,
+      telephone,
+      motivation: motivation || null,
+      status: 'active',
+      livreurPassword: hashedLivreurPwd,
+    });
+
+    // Email avec identifiants livreur
+    await sendEmail({
+      to: email,
+      subject: 'BIM NEXT — Votre espace livreur est prêt',
+      html: `<h2 style="color:#0353CC">Votre espace livreur BIM NEXT</h2>
+             <p>Bonjour <strong>${username}</strong>,</p>
+             <p>Votre compte livreur a été activé par l'équipe BIM.</p>
+             <p><strong>Identifiants livreur :</strong><br/>
+             Email : <strong>${email}</strong><br/>
+             Mot de passe livreur : <strong>${plainPassword}</strong></p>
+             <p>Connectez-vous via "Espace Livreur" dans l'app BIM NEXT.</p>
+             <br/><p style="color:#888">— L'équipe BIM NEXT</p>`,
+    });
+
+    return res.status(201).json({ message: 'Livreur créé avec succès', livreur, plainPassword });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
