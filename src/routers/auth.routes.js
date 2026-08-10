@@ -40,6 +40,7 @@ import {
   sendUserSOS,
   resolveUserSOS,
   getUserSOSAlerts,
+  resetAllBalances,
 } from '../controllers/auth.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 import upload from '../../middlewares/upload.js';
@@ -107,5 +108,8 @@ router.delete('/my-company-admins/:id', authMiddleware, deleteMyCompanyAdmin);
 router.post('/sos', authMiddleware, sendUserSOS);
 router.get('/sos/alerts', authMiddleware, getUserSOSAlerts);
 router.put('/sos/:sosId/resolve', authMiddleware, resolveUserSOS);
+
+// ⚠️  Zone dangereuse — action irréversible (super admin BIM uniquement)
+router.post('/admin/reset-all-balances', authMiddleware, resetAllBalances);
 
 export default router;
