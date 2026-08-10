@@ -34,15 +34,6 @@ const app = express();
 dotenv.config();
 
 // ── Rate limiters ──────────────────────────────────────────
-// Limite globale : 200 requêtes / 15 min par IP
-const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 200,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: 'Trop de requêtes. Réessayez dans 15 minutes.' },
-});
-
 // Limite stricte sur les routes sensibles : 10 requêtes / 15 min par IP
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -84,7 +75,6 @@ const corsOptions = {
 // app.use(cors()) gère aussi les preflight OPTIONS automatiquement.
 app.use(cors(corsOptions));
 
-app.use(globalLimiter);
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(morgan('dev'));
