@@ -201,8 +201,18 @@ export const createProduct = async (req, res) => {
       });
     }
 
-    // Création en bulk
-    const createdProducts = await Product.bulkCreate(products, { validate: true });
+    // Sanitize decimal fields: empty strings → null (avoid "Incorrect decimal value")
+    const DECIMAL_FIELDS = ['TVA', 'price', 'qty', 'reduction', 'threshold', 'warning'];
+    const sanitized = products.map((p) => {
+      const s = { ...p };
+      for (const field of DECIMAL_FIELDS) {
+        if (s[field] === '' || s[field] === undefined) s[field] = null;
+      }
+      return s;
+    });
+
+    // Creation en bulk
+    const createdProducts = await Product.bulkCreate(sanitized, { validate: true });
 
     return res.status(201).json({
       message: "Produits créés avec succès",
@@ -242,8 +252,18 @@ export const updateProduct = async (req, res) => {
       imageUrl = `/images/${req.file.filename}`;
     }
 
+    // Sanitize body: convert empty strings to null for decimal/numeric columns
+    // so MySQL doesn't throw "Incorrect decimal value for column 'TVA'"
+    const DECIMAL_FIELDS = ['TVA', 'price', 'qty', 'reduction', 'threshold', 'warning'];
+    const sanitizedBody = { ...req.body };
+    for (const field of DECIMAL_FIELDS) {
+      if (sanitizedBody[field] === '' || sanitizedBody[field] === undefined) {
+        sanitizedBody[field] = null;
+      }
+    }
+
     await product.update({
-      ...req.body,
+      ...sanitizedBody,
       imageUrl,
     });
 
