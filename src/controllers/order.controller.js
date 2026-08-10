@@ -3,7 +3,7 @@ import { Op } from "sequelize";
 import { Order, User, Company, Product, Currency, TransactionPaiement, Transaction, Notification, Livreur } from "../models/index.js";
 import sequelize from "../config/database.js";
 import { getDateRangeByPeriod } from "../utils/getDateRangeByPeriod.util.js";
-import { emitOrderUpdate } from "../services/socket.service.js";
+import { emitOrderUpdate, emitToUser } from "../services/socket.service.js";
 
 export const createOrder = async (req, res) => {
   try {
@@ -36,9 +36,10 @@ export const createOrder = async (req, res) => {
       )
     );
 
-    // Notifier les livreurs actifs de cette entreprise
+    const grandTotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0).toFixed(2);
+
+    // Notify company delivery staff of new order
     try {
-      const io = emitOrderUpdate.__io ?? null;
       const { getIO } = await import('../services/socket.service.js');
       const ioInstance = getIO();
       ioInstance.emit(`company:new_order:${companyId}`, {
@@ -46,6 +47,21 @@ export const createOrder = async (req, res) => {
         companyId,
         message: 'Nouvelle commande disponible',
       });
+      // Notify admin room as well
+      ioInstance.to('admin_room').emit('order:new', { orderNumber, companyId, userId, grandTotal });
+    } catch {}
+
+    // Push notification to the client confirming order received
+    try {
+      const sender = await User.findByPk(userId, { attributes: ['id', 'expoPushToken'] });
+      if (sender?.expoPushToken) {
+        const { sendPushNotification } = await import('../services/pushNotification.service.js');
+        await sendPushNotification(
+          sender.expoPushToken,
+          '✅ Commande reçue',
+          `Votre commande ${orderNumber} (${grandTotal} EC) a bien été envoyée. Suivez son avancement dans l'app.`
+        );
+      }
     } catch {}
 
     return res.status(201).json({ orderNumber, orders: created });
@@ -141,7 +157,7 @@ export const markOrderPaidOnDelivery = async (req, res) => {
   }
 };
 
-// POST /order/pay/:orderNumber — Payer commande à la livraison (PIN + split company/livreur)
+// POST /order/pay/:orderNumber — Pay order at delivery (PIN, no commission — all to company)
 export const payOrderAtDelivery = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -154,7 +170,7 @@ export const payOrderAtDelivery = async (req, res) => {
       return res.status(400).json({ message: "Code PIN requis" });
     }
 
-    // 1. Find sender and verify PIN
+    // 1. Verify sender and PIN
     const sender = await User.findByPk(userId, { transaction: t, lock: t.LOCK.UPDATE });
     if (!sender) {
       await t.rollback();
@@ -166,7 +182,7 @@ export const payOrderAtDelivery = async (req, res) => {
       return res.status(401).json({ message: "Code PIN incorrect" });
     }
 
-    // 2. Find all rows for this orderNumber
+    // 2. Find order rows
     const orderRows = await Order.findAll({
       where: { orderNumber, userId },
       transaction: t,
@@ -192,13 +208,8 @@ export const payOrderAtDelivery = async (req, res) => {
     }
 
     const companyId = orderRows[0].companyId;
-    const livreurId = orderRows[0].livreurId;
 
-    // 4. Find company + commission rate
-    const company = await Company.findByPk(companyId, { transaction: t });
-    const COMMISSION_RATE = company ? parseFloat(company.commissionRate || 10) / 100 : 0.10;
-
-    // Find company user via UserRole
+    // 4. Find company recipient — all amount goes to company (commission = 0)
     const companyRole = await sequelize.models.UserRole.findOne({ where: { companyId }, transaction: t });
     let recipient = companyRole
       ? await User.findByPk(companyRole.userId, { transaction: t, lock: t.LOCK.UPDATE })
@@ -207,59 +218,46 @@ export const payOrderAtDelivery = async (req, res) => {
       recipient = await User.findOne({ where: { email: 'bimbank@bimreseau.com' }, transaction: t, lock: t.LOCK.UPDATE });
     }
 
-    // 5. Find livreur user
-    let livreurUser = null;
-    let commission = 0;
-    if (livreurId) {
-      const liv = await Livreur.findByPk(livreurId, { transaction: t });
-      if (liv?.userId) {
-        livreurUser = await User.findByPk(liv.userId, { transaction: t, lock: t.LOCK.UPDATE });
-        commission = parseFloat((totalAmount * COMMISSION_RATE).toFixed(2));
-      }
-    }
-    const companyAmount = parseFloat((totalAmount - commission).toFixed(2));
-
-    // 6. Apply balances
-    await sender.update({ soldNumber: senderBalance - totalAmount }, { transaction: t });
+    // 5. Apply balances — no commission split, full amount to company
+    const newSenderBalance = parseFloat((senderBalance - totalAmount).toFixed(2));
+    await sender.update({ soldNumber: newSenderBalance }, { transaction: t });
     if (recipient) {
-      await recipient.update({ soldNumber: parseFloat(recipient.soldNumber || 0) + companyAmount }, { transaction: t });
-    }
-    if (livreurUser && commission > 0) {
-      await livreurUser.update({ soldNumber: parseFloat(livreurUser.soldNumber || 0) + commission }, { transaction: t });
+      await recipient.update({ soldNumber: parseFloat(recipient.soldNumber || 0) + totalAmount }, { transaction: t });
     }
 
-    // 7. Update orders
+    // 6. Update order status → delivered + paid
     await Order.update(
       { status: 'delivered', paymentStatus: 'paid' },
       { where: { orderNumber, userId }, transaction: t }
     );
 
-    // 8. Transaction records
-    const txRows = [
-      { amount: totalAmount,   status: "réussi", description: `Paiement commande ${orderNumber}`, transactionType: "paiement", id: sender.id },
-      { amount: companyAmount, status: "réussi", description: `Réception commande ${orderNumber}`, transactionType: "paiement", id: recipient?.id ?? sender.id },
-    ];
-    if (livreurUser && commission > 0) {
-      txRows.push({ amount: commission, status: "réussi", description: `Commission livraison ${orderNumber}`, transactionType: "paiement", id: livreurUser.id });
-    }
-    await Transaction.bulkCreate(txRows, { transaction: t });
+    // 7. Transaction records
+    await Transaction.bulkCreate([
+      { amount: totalAmount, status: "réussi", description: `Paiement commande ${orderNumber}`, transactionType: "paiement", id: sender.id },
+      { amount: totalAmount, status: "réussi", description: `Réception commande ${orderNumber}`, transactionType: "paiement", id: recipient?.id ?? sender.id },
+    ], { transaction: t });
 
-    // 9. Notifications
-    const notifRows = [
-      { title: "Paiement réussi ", message: `Paiement de ${totalAmount} EC pour la commande ${orderNumber}.`, type: "SUCCESS", userId: sender.id },
-    ];
-    if (livreurUser && commission > 0) {
-      notifRows.push({ title: "Commission reçue ", message: `${commission} EC de commission pour la livraison ${orderNumber}.`, type: "SUCCESS", userId: livreurUser.id });
-    }
-    await Notification.bulkCreate(notifRows, { transaction: t });
+    // 8. Notification for sender
+    await Notification.create(
+      { title: "Paiement réussi ✅", message: `Paiement de ${totalAmount} EC pour la commande ${orderNumber}.`, type: "SUCCESS", userId: sender.id },
+      { transaction: t }
+    );
 
     await t.commit();
 
+    // 9. Emit real-time events after commit
+    // Update order status for all tracking this order
     emitOrderUpdate(orderNumber, {
       orderNumber, status: 'delivered', paymentStatus: 'paid', updatedAt: new Date().toISOString(),
     });
+    // Notify the mobile user directly (triggers order cache invalidation)
+    emitToUser(String(userId), 'order:status_updated', { orderNumber, status: 'delivered' });
+    // Send wallet balance update so the home screen refreshes instantly
+    emitToUser(String(userId), 'wallet:update', { soldNumber: newSenderBalance });
+    // Trigger notification badge refresh
+    emitToUser(String(userId), 'notification', {});
 
-    return res.json({ message: "Paiement réussi, commande livrée", orderNumber, amount: totalAmount, commission, companyAmount });
+    return res.json({ message: "Paiement réussi, commande livrée", orderNumber, amount: totalAmount });
   } catch (error) {
     await t.rollback();
     res.status(500).json({ message: "Erreur serveur", error: error.message });
@@ -310,6 +308,9 @@ export const getOrders = async (req, res) => {
       { model: Company, as: "company", attributes: ["companyId", "name"] },
       { model: Product, as: "product", attributes: ["productId", "name", "price"],
         include: [{ model: Currency, as: "currency", attributes: ["code", "symbol"] }] },
+      { model: Livreur, as: "livreur", required: false,
+        attributes: ["livreurId", "telephone", "rating", "latitude", "longitude", "isOnline"],
+        include: [{ model: User, as: "user", attributes: ["id", "username"] }] },
     ];
 
     const findOptions = { where, include, order: [["createdAt", "DESC"]] };
@@ -339,6 +340,9 @@ export const getOrderById = async (req, res) => {
         { model: Company, as: "company", attributes: ["companyId", "name"] },
         { model: Product, as: "product", attributes: ["productId", "name", "price"],
           include: [{ model: Currency, as: "currency", attributes: ["code", "symbol"] }] },
+        { model: Livreur, as: "livreur", required: false,
+          attributes: ["livreurId", "telephone", "rating", "ratingCount", "latitude", "longitude", "isOnline", "status"],
+          include: [{ model: User, as: "user", attributes: ["id", "username", "email"] }] },
       ],
     });
     if (!order) return res.status(404).json({ message: "Commande introuvable" });

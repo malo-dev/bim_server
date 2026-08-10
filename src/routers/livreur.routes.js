@@ -20,6 +20,9 @@ import {
   sendSOS,
   resolveSOS,
   getSOSAlerts,
+  adminGetAllLivreurs,
+  adminUpdateLivreurStatus,
+  adminCreateLivreur,
 } from '../controllers/livreur.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 
@@ -84,5 +87,10 @@ router.get('/earnings', authMiddleware, getMyEarnings);
 router.post('/sos',               authMiddleware, sendSOS);
 router.get('/sos/alerts',         authMiddleware, getSOSAlerts);
 router.put('/sos/:sosId/resolve', authMiddleware, resolveSOS);
+
+// ── Admin BIM (super admin uniquement) ────────────────────────────────────────
+router.get('/admin/all',              authMiddleware, adminGetAllLivreurs);
+router.post('/admin/create',          authMiddleware, adminCreateLivreur);
+router.put('/admin/:id/status',       authMiddleware, adminUpdateLivreurStatus);
 
 export default router;

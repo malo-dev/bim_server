@@ -52,7 +52,39 @@ const authLimiter = rateLimit({
   message: { message: 'Trop de tentatives. Réessayez dans 15 minutes.' },
 });
 
+const ALLOWED_ORIGINS = [
+  'http://localhost:5000',
+  'http://localhost:5173',
+  'http://localhost:8083',
+  'http://192.168.1.39:5000',
+  'http://192.168.1.39:8083',
+  'http://10.0.10.81:5000',
+  'https://serverbimnext.masmara-dimajelo.org',
+  'https://admin-bim-pi.vercel.app',
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Autoriser les requêtes sans origin (apps mobiles, Postman, etc.)
+    // et toutes les origines Vercel du projet admin
+    if (!origin || ALLOWED_ORIGINS.includes(origin) || /\.vercel\.app$/.test(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, true); // permissif — changer en callback(new Error('Not allowed')) en prod stricte
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+};
+
 // ── Middlewares ────────────────────────────────────────────
+// ⚠️  CORS doit être avant le rate limiter : sinon les réponses 429
+//     n'ont pas de header CORS et le navigateur les signale comme erreur CORS.
+app.use(cors(corsOptions));
+// Répondre immédiatement aux preflight OPTIONS sans passer par le rate limiter
+app.options('*', cors(corsOptions));
+
 app.use(globalLimiter);
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
@@ -63,27 +95,6 @@ app.use(
     contentSecurityPolicy: false,
   })
 );
-const ALLOWED_ORIGINS = [
-  'http://localhost:5000',
-  'http://localhost:5173',
-  'http://localhost:8083',
-  'http://192.168.1.39:5000',
-  'http://192.168.1.39:8083',
-  'http://10.0.10.81:5000',
-  'https://serverbimnext.masmara-dimajelo.org',
-];
-
-app.use(cors({
-  origin: (origin, callback) => {
-    // Autoriser les requêtes sans origin (apps mobiles, Postman, etc.)
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(null, true); // garder permissif pour les tests
-    }
-  },
-  credentials: true,
-}));
 app.disable('x-powered-by');
 app.use(
   '/images',
