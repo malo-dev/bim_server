@@ -1815,6 +1815,48 @@ export const getUserSOSAlerts = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /auth/admin/reset-all-balances
+// Remet le soldNumber de TOUS les utilisateurs BIM NEXT à 0.
+// Action irréversible — réservée aux super-admins BIM.
+// ─────────────────────────────────────────────────────────────────────────────
+export const resetAllBalances = async (req, res) => {
+  try {
+    // Double confirmation via corps de la requête
+    const { confirmation } = req.body;
+    if (confirmation !== 'RESET_ALL_BALANCES') {
+      return res.status(400).json({
+        message: 'Confirmation requise. Envoyez { confirmation: "RESET_ALL_BALANCES" }.',
+      });
+    }
+
+    const [affectedRows] = await User.update(
+      { soldNumber: 0 },
+      { where: {} }   // tous les utilisateurs
+    );
+
+    // Log l'action dans l'historique si possible
+    try {
+      const adminId = req.user?.id;
+      const { History } = await import('../models/index.js');
+      await History.create({
+        userId:   adminId,
+        action:   'Réinitialisation',
+        resource: 'soldNumber (all users)',
+        details:  `Reset de ${affectedRows} soldes à 0 effectué par l'admin #${adminId}`,
+        status:   'success',
+      });
+    } catch { /* ne pas bloquer si historique échoue */ }
+
+    return res.json({
+      message: `✅ Réinitialisation effectuée. ${affectedRows} solde(s) remis à 0.`,
+      affectedRows,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
 export {
   register,
   login,

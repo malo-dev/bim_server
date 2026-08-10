@@ -81,9 +81,8 @@ const corsOptions = {
 // ── Middlewares ────────────────────────────────────────────
 // ⚠️  CORS doit être avant le rate limiter : sinon les réponses 429
 //     n'ont pas de header CORS et le navigateur les signale comme erreur CORS.
+// app.use(cors()) gère aussi les preflight OPTIONS automatiquement.
 app.use(cors(corsOptions));
-// Répondre immédiatement aux preflight OPTIONS sans passer par le rate limiter
-app.options('*', cors(corsOptions));
 
 app.use(globalLimiter);
 app.use(express.json({ limit: '2mb' }));
