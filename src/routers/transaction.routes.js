@@ -8,6 +8,7 @@ import {
   createPaiement,
   checkRechargeStatus,
   createRecharge,
+  createManualRecharge,
   createTransfert,
   createRetrait,
   getTransactionsPaiement,
@@ -36,6 +37,7 @@ router.delete('/delete/:id', authMiddleware, deleteTransaction);
 router.post('/transfert', authMiddleware, createTransfert);
 router.post('/paiement', authMiddleware, createPaiement);
 router.post('/createrecharge', authMiddleware, createRecharge);
+router.post('/manual-recharge', authMiddleware, createManualRecharge);
 router.post('/recharge', authMiddleware, recharge );
 router.post('/recharge/callback', flexpayCallback);
 router.get('/recharge/approved/:reference', flexpayApproved);
