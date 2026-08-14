@@ -1422,6 +1422,53 @@ export const getRechargesList = async (req, res) => {
   }
 };
 
+// ─── Demande de recharge manuelle (sans Maxicash) ────────────────────────────
+// L'utilisateur indique son montant + méthode de paiement.
+// BIM traite manuellement et approuve/rejette depuis l'admin.
+export const createManualRecharge = async (req, res) => {
+  try {
+    const { amount, telephone, method, id } = req.body;
+
+    if (!id || !amount) {
+      return res.status(400).json({ message: 'Données manquantes (id, amount)' });
+    }
+
+    const parsedAmount = parseFloat(String(amount).replace(',', '.'));
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ message: 'Montant invalide' });
+    }
+
+    const user = await User.findByPk(id);
+    if (!user) {
+      return res.status(404).json({ message: 'Utilisateur introuvable' });
+    }
+
+    const reference = generateReferenceRecharge();
+
+    const transaction = await TransactionRecharge.create({
+      amount:      parsedAmount,
+      telephone:   telephone || '',
+      reference,
+      orderNumber: method || 'Manuel',   // méthode de paiement choisie
+      id,
+      status: 'pending',
+    });
+
+    // Notifier l'admin via socket si disponible
+    try {
+      const io = req.app.get('io');
+      if (io) io.to('admin_room').emit('new_recharge_request', { transaction, user: { id: user.id, username: user.username } });
+    } catch (_) {}
+
+    return res.status(201).json({
+      message: 'Demande de recharge enregistrée. Notre équipe vous contactera.',
+      data: transaction,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
 // ─── Liste paginée des retraits ───────────────────────────────────────────────
 export const getRetraitsList = async (req, res) => {
   try {
