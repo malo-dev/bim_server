@@ -4,6 +4,7 @@ import { Order, User, Company, Product, Currency, TransactionPaiement, Transacti
 import sequelize from "../config/database.js";
 import { getDateRangeByPeriod } from "../utils/getDateRangeByPeriod.util.js";
 import { emitOrderUpdate, emitToUser } from "../services/socket.service.js";
+import { recordConsumptionAndMaybeGrantBonus } from "../services/loyalty.service.js";
 
 export const createOrder = async (req, res) => {
   try {
@@ -12,8 +13,8 @@ export const createOrder = async (req, res) => {
 
     if (!items || !Array.isArray(items) || items.length === 0)
       return res.status(400).json({ message: "Le panier est vide" });
-    if (!companyId)
-      return res.status(400).json({ message: "companyId requis" });
+    // companyId est optionnel : une commande de "produits aléatoires"
+    // (non rattachés à une entreprise) n'a pas de companyId.
 
     const orderNumber = `ORD-${Date.now()}-${userId}`;
 
@@ -22,7 +23,7 @@ export const createOrder = async (req, res) => {
         Order.create({
           orderNumber,
           userId,
-          companyId,
+          companyId: companyId || null,
           productId:       item.productId,
           quantity:        item.qty,
           unitPrice:       item.unitPrice,
@@ -38,17 +39,27 @@ export const createOrder = async (req, res) => {
 
     const grandTotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0).toFixed(2);
 
-    // Notify company delivery staff of new order
+    // Fiche de consommation + fidélité (10 achats d'un produit → le 11ème offert).
+    // On ignore les commandes "bonus" elles-mêmes pour ne pas les recompter.
+    if (paymentMethod !== 'bonus') {
+      for (const order of created) {
+        try { await recordConsumptionAndMaybeGrantBonus(order); } catch {}
+      }
+    }
+
+    // Notify company delivery staff of new order (only when the order is tied to a company)
     try {
       const { getIO } = await import('../services/socket.service.js');
       const ioInstance = getIO();
-      ioInstance.emit(`company:new_order:${companyId}`, {
-        orderNumber,
-        companyId,
-        message: 'Nouvelle commande disponible',
-      });
+      if (companyId) {
+        ioInstance.emit(`company:new_order:${companyId}`, {
+          orderNumber,
+          companyId,
+          message: 'Nouvelle commande disponible',
+        });
+      }
       // Notify admin room as well
-      ioInstance.to('admin_room').emit('order:new', { orderNumber, companyId, userId, grandTotal });
+      ioInstance.to('admin_room').emit('order:new', { orderNumber, companyId: companyId || null, userId, grandTotal });
     } catch {}
 
     // Push notification to the client confirming order received
@@ -356,21 +367,51 @@ export const updateOrder = async (req, res) => {
   try {
     const order = await Order.findByPk(req.params.id);
     if (!order) return res.status(404).json({ message: "Commande introuvable" });
+
+    // Mise à jour de la ligne ciblée
     await order.update(req.body);
 
-    // Notifier en temps réel tous les abonnés de cette commande
+    // Si le statut change → propager à TOUTES les lignes du même orderNumber
+    // (une commande multi-articles crée N lignes avec le même orderNumber)
     if (req.body.status && order.orderNumber) {
+      const updatePayload = { status: req.body.status };
+      if (req.body.paymentStatus) updatePayload.paymentStatus = req.body.paymentStatus;
+
+      await Order.update(updatePayload, {
+        where: {
+          orderNumber: order.orderNumber,
+          orderId:     { [Op.ne]: order.orderId }, // évite la double update
+        },
+      });
+
+      // ── Notifier en temps réel (socket) ──────────────────────────────
       const payload = {
-        orderNumber: order.orderNumber,
-        status: req.body.status,
-        paymentStatus: order.paymentStatus,
-        updatedAt: new Date().toISOString(),
+        orderNumber:   order.orderNumber,
+        status:        req.body.status,
+        paymentStatus: req.body.paymentStatus ?? order.paymentStatus,
+        updatedAt:     new Date().toISOString(),
       };
       emitOrderUpdate(order.orderNumber, payload);
-
-      // Notifier directement l'utilisateur dans sa room privée
-      const { emitToUser } = await import('../services/socket.service.js');
       emitToUser(String(order.userId), 'order:status_updated', payload);
+
+      // ── Push notification à chaque étape ─────────────────────────────
+      try {
+        const STATUS_PUSH = {
+          confirmed:  { title: '✅ Commande confirmée',      body: `Votre commande ${order.orderNumber} a été confirmée par l'entreprise.` },
+          processing: { title: '🔧 Commande en préparation', body: `Votre commande ${order.orderNumber} est en cours de préparation.`       },
+          shipped:    { title: '🚴 Commande expédiée !',     body: `Votre commande ${order.orderNumber} est en route. Préparez-vous à recevoir votre livraison.` },
+          delivered:  { title: '📦 Commande livrée !',      body: `Votre commande ${order.orderNumber} a été livrée avec succès. Merci !`   },
+          cancelled:  { title: '❌ Commande annulée',        body: `Votre commande ${order.orderNumber} a été annulée.`                      },
+        };
+        const pushData = STATUS_PUSH[req.body.status];
+        if (pushData) {
+          const owner = await User.findByPk(order.userId, { attributes: ['id', 'expoPushToken'] });
+          if (owner?.expoPushToken) {
+            const { sendPushNotification } = await import('../services/pushNotification.service.js');
+            sendPushNotification(owner.expoPushToken, pushData.title, pushData.body).catch(() => {});
+          }
+        }
+      } catch {}
     }
 
     res.json({ message: "Commande mise à jour avec succès", order });

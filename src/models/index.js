@@ -33,6 +33,9 @@ import Favorite from './favorite.model.js';
 import LivreurRating from './livreurRating.model.js';
 import LivreurSOS from './livreurSOS.model.js';
 import UserSOS from './userSOS.model.js';
+import Banner from './banner.model.js';
+import AppVersion from './appVersion.model.js';
+import ProductConsumption from './productConsumption.model.js';
 
 const CASCADE   = { onDelete: 'CASCADE', onUpdate: 'CASCADE' };
 const SET_NULL  = { onDelete: 'SET NULL', onUpdate: 'CASCADE' };
@@ -69,6 +72,14 @@ Company.hasMany(Product, { foreignKey: "companyId", as: 'products', ...CASCADE }
 // Entreprise → Catégorie business
 Company.belongsTo(BusinessCategory, { foreignKey: "businessId", as: 'category', ...CASCADE });
 BusinessCategory.hasMany(Company, { foreignKey: "businessId", as: 'companies', ...CASCADE });
+
+// Fiche de consommation / fidélité produit
+ProductConsumption.belongsTo(User,    { foreignKey: "userId",    as: "user",    ...CASCADE });
+ProductConsumption.belongsTo(Product, { foreignKey: "productId", as: "product", ...CASCADE });
+ProductConsumption.belongsTo(Order,   { foreignKey: "orderId",   as: "order",   ...SET_NULL });
+ProductConsumption.belongsTo(Company, { foreignKey: "companyId", as: "company", ...SET_NULL });
+User.hasMany(ProductConsumption,    { foreignKey: "userId",    as: "consumptions", ...CASCADE });
+Product.hasMany(ProductConsumption, { foreignKey: "productId", as: "consumptions", ...CASCADE });
 
 // Bonus
 Bonus.belongsTo(User, { foreignKey: "userId", ...CASCADE });
@@ -291,4 +302,7 @@ export {
   LivreurSOS,
   UserSOS,
   Favorite,
+  Banner,
+  AppVersion,
+  ProductConsumption,
 };
