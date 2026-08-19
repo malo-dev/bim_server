@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import { Op } from "sequelize";
 import { Order, User, Company, Product, Currency, TransactionPaiement, Transaction, Notification, Livreur } from "../models/index.js";
 import sequelize from "../config/database.js";
@@ -174,23 +173,12 @@ export const payOrderAtDelivery = async (req, res) => {
   try {
     const userId = req.user?.id;
     const { orderNumber } = req.params;
-    const { pin } = req.body;
 
-    if (!pin) {
-      await t.rollback();
-      return res.status(400).json({ message: "Code PIN requis" });
-    }
-
-    // 1. Verify sender and PIN
+    // 1. Verify sender (paiement confirmé par simple appui, sans code PIN)
     const sender = await User.findByPk(userId, { transaction: t, lock: t.LOCK.UPDATE });
     if (!sender) {
       await t.rollback();
       return res.status(404).json({ message: "Utilisateur introuvable" });
-    }
-    const pinOk = await bcrypt.compare(String(pin), sender.randomly);
-    if (!pinOk) {
-      await t.rollback();
-      return res.status(401).json({ message: "Code PIN incorrect" });
     }
 
     // 2. Find order rows
