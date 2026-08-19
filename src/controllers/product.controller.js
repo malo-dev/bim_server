@@ -4,6 +4,15 @@ import { Op } from 'sequelize';
 import path from 'path';
 import fs from 'fs';
 
+// Notifie l'app mobile (temps réel) qu'un "produit aléatoire" (sans entreprise)
+// vient d'être ajouté / modifié / supprimé depuis admin-bimnext.
+const emitStandaloneProductsUpdated = async () => {
+  try {
+    const { getIO } = await import('../services/socket.service.js');
+    getIO().emit('content:updated', { type: 'products', at: new Date().toISOString() });
+  } catch {}
+};
+
 
 export const getAllProducts = async (req, res) => {
   try {
@@ -18,6 +27,7 @@ export const getAllProducts = async (req, res) => {
       companyId,
       isRecommended,
       isUpselling,
+      standalone,
     } = req.query;
 
     const isPaginate = paginate.toLowerCase() === 'true';
@@ -27,6 +37,9 @@ export const getAllProducts = async (req, res) => {
 
      const whereClause = {};
     if (companyId) whereClause.companyId = companyId;
+    // "Produits aléatoires" : produits non rattachés à une entreprise (companyId = null),
+    // affichés dans une section dédiée sur l'accueil de l'app.
+    if (standalone === 'true') whereClause.companyId = null;
     if (isRecommended === 'true') whereClause.isRecommended = true;
     if (isUpselling === 'true') whereClause.isUpselling = true;
   
@@ -162,18 +175,22 @@ export const createProduct = async (req, res) => {
 
 
     for (const product of products) {
-      if (!product.name || !product.price || !product.companyId) {
+      // companyId est optionnel : un produit sans companyId est un "produit
+      // aléatoire", affiché dans sa propre section sans être rattaché à une entreprise.
+      if (!product.name || !product.price) {
         return res.status(400).json({
-          message: "Chaque produit doit avoir un name, price et companyId",
+          message: "Chaque produit doit avoir un name et un price",
         });
       }
     }
 
-     const companyIds = [...new Set(products.map(p => p.companyId))];
-    const existingCompanies = await Company.findAll({
-      where: { companyId: companyIds },
-      attributes: ["companyId"]
-    });
+     const companyIds = [...new Set(products.map(p => p.companyId).filter(Boolean))];
+    const existingCompanies = companyIds.length
+      ? await Company.findAll({
+          where: { companyId: companyIds },
+          attributes: ["companyId"]
+        })
+      : [];
 
     if (existingCompanies.length !== companyIds.length) {
       const existingIds = existingCompanies.map(c => c.companyId);
@@ -213,6 +230,10 @@ export const createProduct = async (req, res) => {
 
     // Creation en bulk
     const createdProducts = await Product.bulkCreate(sanitized, { validate: true });
+
+    if (createdProducts.some((p) => !p.companyId)) {
+      await emitStandaloneProductsUpdated();
+    }
 
     return res.status(201).json({
       message: "Produits créés avec succès",
@@ -267,6 +288,10 @@ export const updateProduct = async (req, res) => {
       imageUrl,
     });
 
+    if (!product.companyId) {
+      await emitStandaloneProductsUpdated();
+    }
+
     res.status(200).json({
       message: 'Product updated successfully',
       data: product,
@@ -291,7 +316,11 @@ export const deleteProduct = async (req, res) => {
         fs.unlinkSync(imagePath);
       }
     }
+    const wasStandalone = !product.companyId;
     await product.destroy();
+    if (wasStandalone) {
+      await emitStandaloneProductsUpdated();
+    }
 
     res.status(200).json({ message: 'Product and its image deleted successfully' });
   } catch (error) {

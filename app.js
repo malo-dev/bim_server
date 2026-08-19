@@ -31,6 +31,9 @@ import LivreurRoutes from './src/routers/livreur.routes.js'
 import FavoriteRoutes from './src/routers/favorite.routes.js'
 import AgentRoutes    from './src/routers/agent.routes.js'
 import TutorialRoutes from './src/routers/tutorial.routes.js'
+import BannerRoutes     from './src/routers/banner.routes.js'
+import AppVersionRoutes from './src/routers/appVersion.routes.js'
+import ProductConsumptionRoutes from './src/routers/productConsumption.routes.js'
 import path from 'path';
 const app = express();
 dotenv.config();
@@ -125,6 +128,9 @@ app.use('/api/v1/livreur', LivreurRoutes)
 app.use('/api/v1/favorite', FavoriteRoutes)
 app.use('/api/v1/agent',    AgentRoutes)
 app.use('/api/v1/tutorial', TutorialRoutes)
+app.use('/api/v1/banner',      BannerRoutes)
+app.use('/api/v1/app_version', AppVersionRoutes)
+app.use('/api/v1/consumption', ProductConsumptionRoutes)
 
 
 app.get('/', (req, res) => {
