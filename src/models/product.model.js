@@ -118,6 +118,19 @@ const Product = sequelize.define(
       allowNull: false,
       defaultValue: false,
     },
+
+    // Prix "à discuter" : affiché à la place du prix chiffré sur l'app.
+    priceOnRequest: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+
+    // Galerie d'images supplémentaires (en plus de imageUrl, l'image de couverture).
+    images: {
+      type: DataTypes.JSON,
+      allowNull: true,
+    },
   },
   {
     tableName: "products",

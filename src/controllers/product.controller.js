@@ -3,6 +3,7 @@ import { getDateRangeByPeriod } from '../utils/getDateRangeByPeriod.util.js';
 import { Op } from 'sequelize';
 import path from 'path';
 import fs from 'fs';
+import { compressImageFile } from '../utils/compressImage.util.js';
 
 // Notifie l'app mobile (temps réel) qu'un "produit aléatoire" (sans entreprise)
 // vient d'être ajouté / modifié / supprimé depuis admin-bimnext.
@@ -177,9 +178,11 @@ export const createProduct = async (req, res) => {
     for (const product of products) {
       // companyId est optionnel : un produit sans companyId est un "produit
       // aléatoire", affiché dans sa propre section sans être rattaché à une entreprise.
-      if (!product.name || !product.price) {
+      // price est optionnel si priceOnRequest est activé ("Prix à discuter").
+      const isPriceOnRequest = product.priceOnRequest === true || product.priceOnRequest === 'true';
+      if (!product.name || (!product.price && !isPriceOnRequest)) {
         return res.status(400).json({
-          message: "Chaque produit doit avoir un name et un price",
+          message: "Chaque produit doit avoir un name et un price (ou être marqué « Prix à discuter »)",
         });
       }
     }
@@ -227,6 +230,8 @@ export const createProduct = async (req, res) => {
       }
       // La colonne `qty` est NOT NULL en base (produits "aléatoires" sans stock suivi) : 0 par défaut.
       if (s.qty === null) s.qty = 0;
+      // "Prix à discuter" : la colonne price reste NOT NULL, on stocke 0 et l'app affiche le tag à la place.
+      if (s.priceOnRequest === true || s.priceOnRequest === 'true') s.price = s.price || 0;
       return s;
     });
 
@@ -272,6 +277,7 @@ export const updateProduct = async (req, res) => {
         }
       }
 
+      await compressImageFile(req.file.path);
       imageUrl = `/images/${req.file.filename}`;
     }
 
@@ -284,8 +290,13 @@ export const updateProduct = async (req, res) => {
         sanitizedBody[field] = null;
       }
     }
-    // La colonne `qty` est NOT NULL en base : ne jamais envoyer null.
+    // Les colonnes `qty` et `price` sont NOT NULL en base : ne jamais envoyer null.
     if (sanitizedBody.qty === null) delete sanitizedBody.qty;
+    if (sanitizedBody.price === null) {
+      sanitizedBody.priceOnRequest === true || sanitizedBody.priceOnRequest === 'true'
+        ? (sanitizedBody.price = 0)
+        : delete sanitizedBody.price;
+    }
 
     await product.update({
       ...sanitizedBody,
@@ -338,5 +349,57 @@ export const deleteProduct = async (req, res) => {
     res.status(200).json({ message: 'Product and its image deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+};
+
+// ── Galerie d'images (en plus de l'image de couverture) ─────────────────────
+
+export const addProductImages = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const product = await Product.findByPk(id);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+
+    const files = req.files || [];
+    if (files.length === 0) {
+      return res.status(400).json({ message: 'Aucune image envoyée' });
+    }
+
+    await Promise.all(files.map((f) => compressImageFile(f.path)));
+    const newUrls = files.map((f) => `/images/${f.filename}`);
+
+    const existing = Array.isArray(product.images) ? product.images : [];
+    const images = [...existing, ...newUrls];
+    await product.update({ images });
+
+    if (!product.companyId) await emitStandaloneProductsUpdated();
+
+    return res.status(200).json({ message: 'Images ajoutées', data: product });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+export const removeProductImage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { url } = req.body;
+    const product = await Product.findByPk(id);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+
+    const existing = Array.isArray(product.images) ? product.images : [];
+    const images = existing.filter((u) => u !== url);
+    await product.update({ images });
+
+    if (url) {
+      const imagePath = path.join('public', url.replace('/images/', 'images/'));
+      if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+    }
+
+    if (!product.companyId) await emitStandaloneProductsUpdated();
+
+    return res.status(200).json({ message: 'Image retirée', data: product });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
   }
 };
