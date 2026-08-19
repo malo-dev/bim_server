@@ -225,6 +225,8 @@ export const createProduct = async (req, res) => {
       for (const field of DECIMAL_FIELDS) {
         if (s[field] === '' || s[field] === undefined) s[field] = null;
       }
+      // La colonne `qty` est NOT NULL en base (produits "aléatoires" sans stock suivi) : 0 par défaut.
+      if (s.qty === null) s.qty = 0;
       return s;
     });
 
@@ -282,6 +284,8 @@ export const updateProduct = async (req, res) => {
         sanitizedBody[field] = null;
       }
     }
+    // La colonne `qty` est NOT NULL en base : ne jamais envoyer null.
+    if (sanitizedBody.qty === null) delete sanitizedBody.qty;
 
     await product.update({
       ...sanitizedBody,
@@ -317,7 +321,16 @@ export const deleteProduct = async (req, res) => {
       }
     }
     const wasStandalone = !product.companyId;
-    await product.destroy();
+    try {
+      await product.destroy();
+    } catch (destroyError) {
+      if (destroyError.name === 'SequelizeForeignKeyConstraintError') {
+        return res.status(409).json({
+          message: "Ce produit a déjà des commandes associées et ne peut pas être supprimé. Vous pouvez le modifier pour le retirer du catalogue.",
+        });
+      }
+      throw destroyError;
+    }
     if (wasStandalone) {
       await emitStandaloneProductsUpdated();
     }
