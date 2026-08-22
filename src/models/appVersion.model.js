@@ -44,6 +44,14 @@ const AppVersion = sequelize.define(
       allowNull: false,
       defaultValue: false,
     },
+
+    // Interrupteur global : si false, l'app n'affiche jamais la bannière de
+    // mise à jour pour cette plateforme, quelle que soit la version installée.
+    promptEnabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
   },
   {
     tableName: "app_versions",

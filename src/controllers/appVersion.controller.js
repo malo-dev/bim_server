@@ -30,7 +30,7 @@ export const getAllAppVersions = async (req, res) => {
 // C'est ce que l'admin appelle depuis admin-bimnext à chaque publication.
 export const upsertAppVersion = async (req, res) => {
   try {
-    const { platform, latestVersion, minSupportedVersion, storeUrl, releaseNotes, forceUpdate } = req.body;
+    const { platform, latestVersion, minSupportedVersion, storeUrl, releaseNotes, forceUpdate, promptEnabled } = req.body;
 
     if (!platform || !latestVersion) {
       return res.status(400).json({ message: 'platform et latestVersion sont requis' });
@@ -44,6 +44,7 @@ export const upsertAppVersion = async (req, res) => {
         storeUrl: storeUrl || null,
         releaseNotes: releaseNotes || null,
         forceUpdate: forceUpdate === undefined ? false : forceUpdate === 'true' || forceUpdate === true,
+        promptEnabled: promptEnabled === undefined ? true : promptEnabled === 'true' || promptEnabled === true,
       },
       { returning: true }
     );

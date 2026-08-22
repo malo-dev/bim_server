@@ -127,9 +127,25 @@ const Product = sequelize.define(
     },
 
     // Galerie d'images supplémentaires (en plus de imageUrl, l'image de couverture).
+    // get() défensif : si la colonne n'est pas un vrai JSON MySQL (ex: colonne TEXT
+    // créée à la main), le driver peut renvoyer une chaîne au lieu d'un tableau déjà
+    // parsé — on s'assure de toujours ressortir un vrai tableau JS.
     images: {
       type: DataTypes.JSON,
       allowNull: true,
+      get() {
+        const raw = this.getDataValue('images');
+        if (Array.isArray(raw)) return raw;
+        if (typeof raw === 'string' && raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        }
+        return [];
+      },
     },
   },
   {
