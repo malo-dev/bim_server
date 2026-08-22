@@ -39,12 +39,16 @@ const app = express();
 dotenv.config();
 
 // ── Rate limiters ──────────────────────────────────────────
-// Limite stricte sur les routes sensibles : 10 requêtes / 15 min par IP
+// Limite sur les routes sensibles : 30 tentatives échouées / 15 min par IP.
+// skipSuccessfulRequests : les connexions réussies ne comptent pas dans la limite,
+// pour ne pas bloquer toute une équipe partageant la même IP (bureau/4G) après
+// quelques connexions légitimes.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: true,
   message: { message: 'Trop de tentatives. Réessayez dans 15 minutes.' },
 });
 

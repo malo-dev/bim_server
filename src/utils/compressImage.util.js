@@ -10,12 +10,13 @@ export async function compressImageFile(filePath, { maxDimension = 1280, quality
     const buffer = await sharp(filePath)
       .rotate() // respecte l'orientation EXIF avant de la retirer
       .resize({ width: maxDimension, height: maxDimension, fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality, mozjpeg: true })
+      .jpeg({ quality })
       .toBuffer();
 
     const fs = await import('fs');
     fs.writeFileSync(filePath, buffer);
-  } catch {
+  } catch (err) {
     // Si la compression échoue (format non supporté, etc.), on garde le fichier original.
+    console.error('[compressImageFile] échec compression', filePath, err.message);
   }
 }
