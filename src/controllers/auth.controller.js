@@ -248,19 +248,25 @@ const askPasswordReset = async (req, res) => {
         { where: { id: user.id } }
       );
 
-    
-      // Réponse immédiate — l'email part en arrière-plan sans bloquer
+      // On attend l'envoi pour pouvoir remonter une vraie erreur si le mail échoue
+      // (avant, la réponse "envoyé" partait avant même de savoir si ça marchait,
+      // ce qui rendait le problème invisible côté utilisateur ET côté logs).
+      const sent = await sendEmail({
+        to: email,
+        subject: 'Activation de votre compte Bim',
+        html: generateOtpEmailTemplate(user.username, otp),
+      });
+
+      if (!sent) {
+        return res.status(502).json({
+          message: "L'envoi de l'e-mail a échoué. Réessayez dans quelques instants ou contactez le support.",
+        });
+      }
+
       res.status(200).json({
         message: 'Un code otp a été envoyé à votre adresse e-mail.',
         userId: user.id,
       });
-
-      mailer.sendMail({
-        from: 'noreply@bimreseau.com',
-        to: email,
-        subject: 'Activation de votre compte Bim',
-        html: generateOtpEmailTemplate(user.username, otp),
-      }).catch(err => console.error('⚠️  Mail OTP non envoyé :', err.message));
     }
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
