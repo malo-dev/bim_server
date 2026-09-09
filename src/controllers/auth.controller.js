@@ -119,7 +119,7 @@ const login = async (req, res) => {
     // Compte inactif
     if (!user.isActive) {
       return res.status(409).json({
-        message: 'This process cannot be completed because your account is not yet activated.',
+        message: "Ce compte n'est pas encore activé. Contactez le support BIM NEXT pour l'activer.",
       });
     }
 
@@ -228,7 +228,7 @@ const askPasswordReset = async (req, res) => {
     } else {
       if (!user.isActive) {
         return res.status(409).json({
-          message: 'This process cannot be completed because your account is not yet activated.',
+          message: "Ce compte n'est pas encore activé. Contactez le support BIM NEXT pour l'activer.",
         });
       }
 
@@ -606,13 +606,16 @@ const desactivateUser = async (req, res) => {
     if (isActiveUser) {
       await User.update({ isActive: false }, { where: { id: user.id } });
 
-    
-    await mailer.sendMail({
-      from: 'noreply@bimreseau.com',
-      to: email,
-      subject: 'Activation de votre compte Bim',
-      html: generateOtpEmailTemplateActivated(user.username),
-    });
+      // Notification non bloquante : la désactivation ne doit jamais échouer
+      // à cause d'un problème d'envoi d'e-mail.
+      if (user.email) {
+        mailer.sendMail({
+          from: 'noreply@bimreseau.com',
+          to: user.email,
+          subject: 'Désactivation de votre compte Bim',
+          html: generateOtpEmailTemplateActivated(user.username),
+        }).catch(err => console.error('⚠️  Mail désactivation non envoyé :', err.message));
+      }
 
       return res.status(200).json({ message: 'Utilisateur désactivé avec succès' });
     } else {
@@ -884,7 +887,7 @@ const veryfUserPass = async (req, res) => {
 
   if (!user.isActive) {
           return res.status(409).json({
-            message: 'This process cannot be completed because your account is not yet activated.',
+            message: "Ce compte n'est pas encore activé. Contactez le support BIM NEXT pour l'activer.",
           });
         }
 
