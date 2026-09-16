@@ -33,6 +33,8 @@ import AgentRoutes    from './src/routers/agent.routes.js'
 import TutorialRoutes from './src/routers/tutorial.routes.js'
 import BannerRoutes     from './src/routers/banner.routes.js'
 import AppVersionRoutes from './src/routers/appVersion.routes.js'
+import ChauffeurRoutes  from './src/routers/chauffeur.routes.js'
+import RideRoutes       from './src/routers/ride.routes.js'
 import ProductConsumptionRoutes from './src/routers/productConsumption.routes.js'
 import path from 'path';
 const app = express();
@@ -134,6 +136,8 @@ app.use('/api/v1/agent',    AgentRoutes)
 app.use('/api/v1/tutorial', TutorialRoutes)
 app.use('/api/v1/banner',      BannerRoutes)
 app.use('/api/v1/app_version', AppVersionRoutes)
+app.use('/api/v1/chauffeur',   ChauffeurRoutes)
+app.use('/api/v1/ride',        RideRoutes)
 app.use('/api/v1/consumption', ProductConsumptionRoutes)
 
 

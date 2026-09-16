@@ -71,6 +71,14 @@ export const initSocket = (httpServer) => {
       }
     });
 
+    // BIM Transport : suivi temps réel d'une course (statut + position chauffeur)
+    socket.on('track_ride', (rideNumber) => {
+      if (rideNumber) {
+        socket.join(`ride_${rideNumber}`);
+        console.log(`🚗 Socket ${socket.id} suit la course ${rideNumber}`);
+      }
+    });
+
     // Livreur partage sa position
     socket.on('livreur:update_location', ({ livreurId, latitude, longitude }) => {
       if (livreurId) {

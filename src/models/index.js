@@ -35,6 +35,8 @@ import LivreurSOS from './livreurSOS.model.js';
 import UserSOS from './userSOS.model.js';
 import Banner from './banner.model.js';
 import AppVersion from './appVersion.model.js';
+import Chauffeur from './chauffeur.model.js';
+import Ride from './ride.model.js';
 import ProductConsumption from './productConsumption.model.js';
 
 const CASCADE   = { onDelete: 'CASCADE', onUpdate: 'CASCADE' };
@@ -260,6 +262,16 @@ Livreur.hasMany(LivreurRating, { foreignKey: 'livreurId', as: 'ratings', ...CASC
 LivreurSOS.belongsTo(Livreur, { foreignKey: 'livreurId', as: 'livreur', ...CASCADE });
 Livreur.hasMany(LivreurSOS,   { foreignKey: 'livreurId', as: 'alerts',  ...CASCADE });
 
+// ================= BIM TRANSPORT (chauffeurs & courses) =================
+
+Chauffeur.belongsTo(User, { foreignKey: 'userId', as: 'user', ...CASCADE });
+User.hasMany(Chauffeur,   { foreignKey: 'userId', as: 'chauffeurProfiles' });
+
+Ride.belongsTo(User,      { foreignKey: 'userId',      as: 'passenger', ...CASCADE });
+Ride.belongsTo(Chauffeur, { foreignKey: 'chauffeurId', as: 'chauffeur', ...SET_NULL });
+User.hasMany(Ride,        { foreignKey: 'userId',      as: 'rides' });
+Chauffeur.hasMany(Ride,   { foreignKey: 'chauffeurId', as: 'rides' });
+
 // ================= USER SOS =================
 
 UserSOS.belongsTo(User, { foreignKey: 'userId', as: 'user', ...CASCADE });
@@ -305,4 +317,6 @@ export {
   Banner,
   AppVersion,
   ProductConsumption,
+  Chauffeur,
+  Ride,
 };
