@@ -244,12 +244,15 @@ export const recharge = async (req, res) => {
       });
     }
 
-    const rechargeAmount = Math.round(amount * 10);
-    const reference      = generateReferenceRecharge();
+    const reference = generateReferenceRecharge();
 
-    /* ── 4. Enregistrement en attente ── */
+    /* ── 4. Enregistrement en attente ──
+       IMPORTANT : on stocke le montant RÉEL (EC = USD, 1:1), identique à celui
+       envoyé à FlexPay. Ne jamais appliquer de facteur d'échelle ici : un
+       montant non entier (ex. 12.47) serait corrompu par un aller-retour
+       ×10 / ÷10 (arrondi en deux temps → 12.47 devient 13). ── */
     rechargeRecord = await TransactionRecharge.create({
-      amount:    rechargeAmount,
+      amount:    amount,
       telephone,
       reference,
       id:        userId,
@@ -384,7 +387,7 @@ export const flexpayCallback = async (req, res) => {
     console.log(`✅ [flexpayCallback] Succès confirmé — code: ${code} — ref: ${reference}`);
     await rechargeRecord.update({ status: "success" });
 
-    const rawAmount = Math.round(rechargeRecord.amount / 10);
+    const rawAmount = Number(rechargeRecord.amount);
 
     let creditResult;
     try {
@@ -525,11 +528,12 @@ export const verifyPayment = async (req, res) => {
       return res.status(200).json({ message: "Paiement annulé ou refusé", status: "cancelled", data: checkData });
     }
 
-    /* txStatus = "0" → succès ; "1" / "2" → encore en attente (push envoyé) ; autre → annulé/refusé */
-    if (txStatus !== "0" && txStatus !== "1" && txStatus !== "2" && txStatus !== "") {
+    /* txStatus (doc FlexPay) : "0" = succès ; "1" = transaction non aboutie (échec confirmé) ;
+       absent/vide = pas encore de statut côté FlexPay → toujours en attente du push opérateur */
+    if (txStatus === "1") {
       await rechargeRecord.update({ status: "failed" });
       emitToUser(rechargeRecord.id, "recharge:cancelled", { reference });
-      return res.status(200).json({ message: "Paiement annulé ou refusé par l'opérateur", status: "cancelled", data: checkData });
+      return res.status(200).json({ message: "Paiement refusé par l'opérateur", status: "cancelled", data: checkData });
     }
 
     /* Paiement encore en attente chez l'opérateur — on expire après 10 min */
@@ -545,7 +549,7 @@ export const verifyPayment = async (req, res) => {
 
     /* Paiement confirmé → on crédite */
     await rechargeRecord.update({ status: "success" });
-    const rawAmount = Math.round(rechargeRecord.amount / 10);
+    const rawAmount = Number(rechargeRecord.amount);
 
     let creditResult;
     try {
