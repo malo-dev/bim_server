@@ -37,6 +37,7 @@ import Banner from './banner.model.js';
 import AppVersion from './appVersion.model.js';
 import Chauffeur from './chauffeur.model.js';
 import Ride from './ride.model.js';
+import RideTier from './rideTier.model.js';
 import ProductConsumption from './productConsumption.model.js';
 
 const CASCADE   = { onDelete: 'CASCADE', onUpdate: 'CASCADE' };
@@ -319,4 +320,5 @@ export {
   ProductConsumption,
   Chauffeur,
   Ride,
+  RideTier,
 };

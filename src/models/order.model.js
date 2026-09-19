@@ -81,6 +81,16 @@ const Order = sequelize.define(
       allowNull: true,
     },
 
+    destinationLat: {
+      type: DataTypes.DECIMAL(10, 8),
+      allowNull: true,
+    },
+
+    destinationLng: {
+      type: DataTypes.DECIMAL(11, 8),
+      allowNull: true,
+    },
+
     notes: {
       type: DataTypes.TEXT,
       allowNull: true,
