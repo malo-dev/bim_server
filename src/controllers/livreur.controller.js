@@ -6,6 +6,14 @@ import { sendEmail } from '../utils/sendEmail.utils.js';
 import { emitToUser, getIO, emitOrderUpdate, emitSOSAlert } from '../services/socket.service.js';
 import { Op } from 'sequelize';
 
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function generatePassword(length = 8) {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#';
   return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
@@ -173,6 +181,42 @@ export const updateLivreurLocation = async (req, res) => {
         longitude,
       });
     } catch {}
+
+    // ETA réel : recalculé à chaque mise à jour GPS, à partir de la distance
+    // réelle entre le livreur et la position du client (remplace l'ancienne
+    // valeur fixe de 30 min posée à l'acceptation de la commande).
+    try {
+      const activeOrders = await Order.findAll({
+        where: {
+          livreurId: livreur.livreurId,
+          status: ['confirmed', 'processing', 'shipped'],
+          destinationLat: { [Op.ne]: null },
+          destinationLng: { [Op.ne]: null },
+        },
+      });
+
+      for (const order of activeOrders) {
+        const distanceKm = haversineKm(
+          Number(latitude), Number(longitude),
+          Number(order.destinationLat), Number(order.destinationLng)
+        );
+        const etaMin = Math.max(1, Math.round(distanceKm * 2.4));
+
+        await order.update({ estimatedMinutes: etaMin });
+
+        try {
+          getIO().to(`order_${order.orderNumber}`).emit('order:eta_updated', {
+            orderNumber: order.orderNumber,
+            distanceKm: parseFloat(distanceKm.toFixed(2)),
+            etaMin,
+            livreurLat: latitude,
+            livreurLng: longitude,
+          });
+        } catch {}
+      }
+    } catch (e) {
+      console.error('[updateLivreurLocation] Erreur calcul ETA:', e.message);
+    }
 
     return res.json({ message: 'Position mise à jour' });
   } catch (error) {

@@ -30,6 +30,18 @@ export const registerChauffeur = async (req, res) => {
   }
 };
 
+// ── Mon profil chauffeur (app mobile, mode chauffeur) ────────────────────────
+export const getMyChauffeur = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const chauffeur = await Chauffeur.findOne({ where: { userId } });
+    if (!chauffeur) return res.status(404).json({ message: 'Aucun profil chauffeur' });
+    return res.status(200).json({ data: chauffeur });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
 // ── Liste (admin) ────────────────────────────────────────────────────────────
 export const getAllChauffeurs = async (req, res) => {
   try {

@@ -8,7 +8,7 @@ import { recordConsumptionAndMaybeGrantBonus } from "../services/loyalty.service
 export const createOrder = async (req, res) => {
   try {
     const userId = req.user?.id;
-    const { items, companyId, shippingAddress, notes, paymentMethod, clientPhone } = req.body;
+    const { items, companyId, shippingAddress, notes, paymentMethod, clientPhone, destinationLat, destinationLng } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0)
       return res.status(400).json({ message: "Le panier est vide" });
@@ -30,6 +30,8 @@ export const createOrder = async (req, res) => {
           status:          "pending",
           paymentMethod:   paymentMethod || "delivery",
           shippingAddress: shippingAddress || null,
+          destinationLat:  destinationLat || null,
+          destinationLng:  destinationLng || null,
           notes:           notes || null,
           clientPhone:     clientPhone || null,
         })
