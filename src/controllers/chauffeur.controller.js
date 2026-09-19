@@ -89,11 +89,14 @@ export const adminCreateChauffeur = async (req, res) => {
     const { userId, telephone, vehicleMake, vehicleModel, vehicleColor, plateNumber, vehicleTier, seats } = req.body;
     if (!userId) return res.status(400).json({ message: 'userId requis' });
 
+    const avatarUrl = req.file ? `/images/${req.file.filename}` : null;
+
     const chauffeur = await Chauffeur.create({
       userId, telephone, vehicleMake, vehicleModel, vehicleColor, plateNumber,
       vehicleTier: vehicleTier || 'eco',
       seats: seats || 4,
       status: 'active',
+      avatarUrl,
     });
     return res.status(201).json({ message: 'Chauffeur créé', data: chauffeur });
   } catch (error) {
@@ -105,7 +108,11 @@ export const updateChauffeur = async (req, res) => {
   try {
     const chauffeur = await Chauffeur.findByPk(req.params.id);
     if (!chauffeur) return res.status(404).json({ message: 'Chauffeur introuvable' });
-    await chauffeur.update(req.body);
+
+    const payload = { ...req.body };
+    if (req.file) payload.avatarUrl = `/images/${req.file.filename}`;
+
+    await chauffeur.update(payload);
     return res.status(200).json({ message: 'Chauffeur mis à jour', data: chauffeur });
   } catch (error) {
     return res.status(500).json({ message: error.message });
