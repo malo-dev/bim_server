@@ -11,7 +11,7 @@ import sequelize  from '../config/database.js';
 
 /* ─── CONFIG ────────────────────────────────────────────────────────── */
 const FRAIS_ABONNEMENT       = 1;
-const OWNER_EMAIL            = 'bimbank@bimreseau.com';
+export const OWNER_EMAIL     = 'bimbank@bimreseau.com';
 const MOBILE_MONEY_PROVIDERS = new Set(['AirtelMoney', 'M-Pesa', 'OrangeMoney', 'AfriMoney']);
 
 /* ─── Helper token ──────────────────────────────────────────────────── */
@@ -79,7 +79,7 @@ const callFlexPayCard = async (reference, amount, currency) => {
 };
 
 /* ─── Logique commune de crédit BIM ─────────────────────────────────── */
-const creditBim = async (userId, amount, ownerEmailRef) => {
+export const creditBim = async (userId, amount, ownerEmailRef) => {
   const t = await sequelize.transaction();
   let ownerItem = null;
 

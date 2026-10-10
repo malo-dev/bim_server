@@ -13,6 +13,7 @@ import { generateNewLoginAlertEmailTemplate,generateTransactionPasswordEmailTemp
 import { generateAccountNumber,generateAccountNumberAgent} from '../utils/generateAccountNumber.util.js';
 import { generatePassword6Digits,getFormattedDateTime} from '../utils/calculFrais.util.js';
 import { getDateRangeByPeriod } from '../utils/getDateRangeByPeriod.util.js';
+import { creditBim, OWNER_EMAIL } from './recharge.controller.js';
 const generateOtp = () => {
   return Math.floor(100000 + Math.random() * 900000).toString(); // OTP 6 chiffres
 };
@@ -428,6 +429,20 @@ const getAllUsers = async (req, res) => {
     });
   }
 };
+// Même logique que la vérification d'abonnement dans createTransfert
+// (transaction.controller.js) — exposée ici pour que le mobile puisse
+// prévenir l'utilisateur AVANT qu'il ne tente un transfert, au lieu de le
+// laisser découvrir le blocage après coup.
+function hasActiveSubscriptionToken(user) {
+  if (!user.TokenAbonemment) return false;
+  try {
+    jwt.verify(user.TokenAbonemment, process.env.JWT_SECRET);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const getUserById = async (req, res) => {
   const { id } = req.params;
   try {
@@ -437,7 +452,7 @@ const getUserById = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'Utilisateur introuvable' });
     }
-    res.status(200).json(user);
+    res.status(200).json({ ...user.toJSON(), hasActiveSubscription: hasActiveSubscriptionToken(user) });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -1645,6 +1660,12 @@ export const getTransactionPassword = async (req, res) => {
 };
 
 // ─── Recharge admin d'un compte utilisateur ──────────────────────────────────
+// Réutilise exactement la même logique qu'une vraie recharge FlexPay
+// (creditBim) : frais d'abonnement prélevés sur la première recharge,
+// TokenAbonemment généré, Transaction/Notification/Historique créés.
+// Avant, cette route ne faisait que soldNumber += amount — un utilisateur
+// crédité uniquement par l'admin n'activait donc jamais son abonnement et
+// restait bloqué pour les transferts malgré un solde suffisant.
 export const adminRechargeUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1657,15 +1678,22 @@ export const adminRechargeUser = async (req, res) => {
     const user = await User.findByPk(id);
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
 
-    const current = parseFloat(user.soldNumber ?? 0);
-    const newBalance = current + parseFloat(amount);
+    const previousBalance = parseFloat(user.soldNumber ?? 0);
+    const result = await creditBim(user.id, Number(amount), OWNER_EMAIL);
 
-    await user.update({ soldNumber: newBalance });
+    if (!result.ok) {
+      return res.status(400).json({
+        message: result.reason === 'montant_trop_faible'
+          ? "Montant trop faible pour activer l'abonnement (minimum > 1 EC pour une première recharge)"
+          : 'Opération refusée',
+      });
+    }
 
     return res.status(200).json({
       message: `${amount} EC ajoutés au compte de ${user.username}`,
-      previousBalance: current,
-      newBalance,
+      previousBalance,
+      newBalance: result.userItem.soldNumber,
+      subscriptionActivated: !result.aDejaAbonnement,
       userId: user.id,
     });
   } catch (error) {

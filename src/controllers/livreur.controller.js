@@ -551,6 +551,17 @@ export const cancelDelivery = async (req, res) => {
     const livreur = await Livreur.findOne({ where: { userId, status: 'active' } });
     if (!livreur) return res.status(403).json({ message: 'Profil livreur actif requis' });
 
+    // Une fois "shipped", le livreur a déjà (en principe) récupéré les
+    // articles — le laisser annuler remettrait la commande "pending" sans
+    // que personne ne sache que les produits sont encore chez lui.
+    const existing = await Order.findOne({ where: { orderNumber, livreurId: livreur.livreurId } });
+    if (!existing) return res.status(404).json({ message: 'Commande introuvable ou non assignée à vous' });
+    if (['shipped', 'delivered'].includes(existing.status)) {
+      return res.status(400).json({
+        message: "Impossible d'annuler : la livraison est déjà en cours de route. Contactez le support si besoin.",
+      });
+    }
+
     const [count] = await Order.update(
       { livreurId: null, status: 'pending' },
       { where: { orderNumber, livreurId: livreur.livreurId } }

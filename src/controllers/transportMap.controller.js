@@ -1,3 +1,38 @@
+import axios from 'axios';
+
+// GET /transport/geocode?address=... — convertit une adresse tapée par
+// l'utilisateur en coordonnées GPS (Google Geocoding API), pour afficher un
+// pin destination sur la carte et calculer une vraie distance (Haversine)
+// au lieu du fallback déterministe basé sur le texte de l'adresse.
+export const geocodeAddress = async (req, res) => {
+  try {
+    const { address } = req.query;
+    if (!address || !address.trim()) {
+      return res.status(400).json({ message: 'address est obligatoire' });
+    }
+
+    const apiKey = process.env.GOOGLE_MAPS_JS_API_KEY;
+    if (!apiKey) return res.status(503).json({ message: 'Geocoding indisponible (clé API manquante)' });
+
+    const resp = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+      params: {
+        address: `${address}, Kinshasa, République Démocratique du Congo`,
+        key: apiKey,
+      },
+    });
+
+    const result = resp.data?.results?.[0];
+    if (!result) return res.status(404).json({ message: 'Adresse introuvable' });
+
+    const { lat, lng } = result.geometry.location;
+    return res.status(200).json({
+      data: { lat, lng, formattedAddress: result.formatted_address },
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
 // Page carte BIM Transport — servie par le backend et chargée dans une WebView
 // côté app mobile (pas de dépendance native react-native-maps, compatible Expo Go).
 // La position du véhicule est mise à jour en direct depuis React Native via
