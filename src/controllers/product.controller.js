@@ -29,6 +29,7 @@ export const getAllProducts = async (req, res) => {
       isRecommended,
       isUpselling,
       standalone,
+      businessId,
     } = req.query;
 
     const isPaginate = paginate.toLowerCase() === 'true';
@@ -90,9 +91,17 @@ export const getAllProducts = async (req, res) => {
         { model: Currency, as: 'currency' },
         { model: Category, as: 'categories', through: { attributes: [] } },
         { model: ProductSold, as: 'productSold' },
-        { model: Company, as: 'company', attributes: ['companyId', 'name', 'businessId'], include: [
-          { model: BusinessCategory, as: 'category', attributes: ['businessId', 'name'] },
-        ]},
+        {
+          model: Company, as: 'company', attributes: ['companyId', 'name', 'businessId'],
+          // Filtre par secteur (grille "Tous nos produits" de l'accueil) : INNER JOIN
+          // uniquement quand businessId est fourni, pour ne pas casser les appels
+          // existants (produits standalone sans company, etc.) quand il est absent.
+          where: businessId ? { businessId } : undefined,
+          required: !!businessId,
+          include: [
+            { model: BusinessCategory, as: 'category', attributes: ['businessId', 'name'] },
+          ],
+        },
       ],
     };
 
