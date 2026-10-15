@@ -127,6 +127,18 @@ sequelize.query('SET FOREIGN_KEY_CHECKS=0')
       console.log('✅ users.privacyAcceptedAt ajouté');
     } catch { /* déjà existant */ }
     try {
+      await sequelize.query("ALTER TABLE users ADD COLUMN lastIp VARCHAR(45) NULL");
+      console.log('✅ users.lastIp ajouté');
+    } catch { /* déjà existant */ }
+    try {
+      await sequelize.query("ALTER TABLE users ADD COLUMN deviceModel VARCHAR(255) NULL");
+      console.log('✅ users.deviceModel ajouté');
+    } catch { /* déjà existant */ }
+    try {
+      await sequelize.query("ALTER TABLE users ADD COLUMN deviceBrand VARCHAR(255) NULL");
+      console.log('✅ users.deviceBrand ajouté');
+    } catch { /* déjà existant */ }
+    try {
       await sequelize.query(`CREATE TABLE IF NOT EXISTS user_favorites (
         favoriteId INT AUTO_INCREMENT PRIMARY KEY,
         userId INT NOT NULL,
