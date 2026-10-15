@@ -181,6 +181,22 @@ maxTransfertParJour: {
       allowNull: true,
       comment: 'Date de la dernière réinitialisation de mot de passe',
     },
+
+    // Compte créé silencieusement via /auth/quick-access (sans email/mot de
+    // passe réels de l'utilisateur) — session longue durée, pas d'OTP.
+    isQuickAccount: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+    },
+    // Email optionnel, distinct de la colonne `email` (identifiant unique de
+    // connexion) — uniquement utilisé comme destinataire additionnel pour
+    // les notifications de transaction.
+    notificationEmail: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      validate: { isEmail: true },
+    },
   },
   {
     tableName: 'users',
@@ -190,6 +206,9 @@ maxTransfertParJour: {
       {
         unique: true,
         fields: ['email'],
+      },
+      {
+        fields: ['telephone'],
       },
     ],
   }

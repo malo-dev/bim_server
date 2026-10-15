@@ -250,7 +250,7 @@ export const recharge = async (req, res) => {
           amount:   montantCredite,
         });
 
-        const recipients = [userItem.email, ownerItem?.email].filter(Boolean).join(", ");
+        const recipients = [userItem.email, userItem.notificationEmail, ownerItem?.email].filter(Boolean).join(", ");
 
         await mailer.sendMail({
           from:    "noreply@bimreseau.com",
