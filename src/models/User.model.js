@@ -197,6 +197,23 @@ maxTransfertParJour: {
       allowNull: true,
       validate: { isEmail: true },
     },
+
+    // Empreinte de création/dernière connexion — le téléphone des comptes
+    // "rapides" n'étant pas vérifié par SMS, ces champs servent de second
+    // signal pour repérer plusieurs comptes anonymes créés depuis le même
+    // appareil/IP.
+    lastIp: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    deviceModel: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    deviceBrand: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
   },
   {
     tableName: 'users',

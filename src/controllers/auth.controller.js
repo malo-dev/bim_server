@@ -69,11 +69,21 @@ const generateQuickUsername = () => `quick_${crypto.randomBytes(3).toString('hex
 const generateQuickEmail = () => `quick_${crypto.randomBytes(8).toString('hex')}@bimreseau.com`;
 
 const quickAccess = async (req, res) => {
-  const { telephone } = req.body;
+  const { telephone, deviceModel, deviceBrand } = req.body;
   const cleanPhone = telephone ? String(telephone).trim() : null;
+  // IP du client — derrière un proxy/load balancer, x-forwarded-for porte la
+  // vraie IP d'origine (la première de la liste), sinon req.ip suffit.
+  const requestIp = (req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.ip || null;
 
   try {
-    let user = cleanPhone ? await User.findOne({ where: { telephone: cleanPhone } }) : null;
+    // `telephone` n'est pas unique (plusieurs comptes "rapides" peuvent avoir
+    // été créés avec le même numéro, ou un numéro peut être recyclé entre
+    // deux personnes) — en cas de doublon, on retrouve le compte le plus
+    // récemment actif (updatedAt est mis à jour à chaque connexion), pas un
+    // compte arbitraire.
+    let user = cleanPhone
+      ? await User.findOne({ where: { telephone: cleanPhone }, order: [['updatedAt', 'DESC']] })
+      : null;
     let isNewAccount = false;
 
     if (!user) {
@@ -93,6 +103,9 @@ const quickAccess = async (req, res) => {
             isQuickAccount: true,
             accountNumber: String(generateAccountNumber()),
             privacyAcceptedAt: new Date(),
+            lastIp: requestIp,
+            deviceModel: deviceModel || null,
+            deviceBrand: deviceBrand || null,
           });
           created = true;
         } catch (e) {
@@ -124,7 +137,13 @@ const quickAccess = async (req, res) => {
       token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '2h' });
     }
 
-    await user.update({ refreshToken, Token: token });
+    await user.update({
+      refreshToken,
+      Token: token,
+      lastIp: requestIp || user.lastIp,
+      deviceModel: deviceModel || user.deviceModel,
+      deviceBrand: deviceBrand || user.deviceBrand,
+    });
 
     return res.status(200).json({
       message: isNewAccount ? 'Compte créé avec succès' : 'Compte retrouvé avec succès',
