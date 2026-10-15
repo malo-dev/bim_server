@@ -358,6 +358,22 @@ export const updateOrder = async (req, res) => {
     const order = await Order.findByPk(req.params.id);
     if (!order) return res.status(404).json({ message: "Commande introuvable" });
 
+    // Changer le STATUT d'une commande est une action d'administration
+    // (confirmer/préparer/expédier/livrer/annuler) — réservée au staff
+    // (BIM ou entreprise, cette dernière utilisée par le portail entreprise
+    // pour ses propres commandes). Les mises à jour d'adresse/téléphone
+    // (ex: produit offert fidélité, renseignées par le client lui-même) ne
+    // sont pas concernées.
+    if (req.body.status) {
+      const userRoleRecord = await sequelize.models.UserRole.findOne({ where: { userId: req.user.id } });
+      const roleName = userRoleRecord
+        ? (await sequelize.models.Role.findByPk(userRoleRecord.roleId))?.name
+        : null;
+      if (roleName !== 'BIM' && roleName !== 'COMPANY_ADMIN') {
+        return res.status(403).json({ message: 'Accès réservé au staff BIM ou entreprise.' });
+      }
+    }
+
     // Mise à jour de la ligne ciblée
     await order.update(req.body);
 

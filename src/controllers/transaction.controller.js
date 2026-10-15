@@ -327,7 +327,7 @@ export const createRetrait = async (req, res) => {
 
     await mailer.sendMail({
       from: "noreply@bimreseau.com",
-      to: `${userSender.email}, ${userAgent.email}`,
+      to: [userSender.email, userSender.notificationEmail, userAgent.email].filter(Boolean).join(','),
       subject: `Un retrait de ${retraitAmount}$ a été effectué avec succès le ${new Date().toLocaleDateString()} à ${new Date().toLocaleTimeString()}.`,
       html: htmlSuccess,
     });
@@ -647,11 +647,11 @@ export const createTransfert = async (req, res) => {
 
       await Promise.all([
         mailer.sendMail({
-          from: "noreply@bimreseau.com", to: sender.email,
+          from: "noreply@bimreseau.com", to: [sender.email, sender.notificationEmail].filter(Boolean).join(','),
           subject: "Transfert envoyé", html: htmlSender,
         }),
         mailer.sendMail({
-          from: "noreply@bimreseau.com", to: receiver.email,
+          from: "noreply@bimreseau.com", to: [receiver.email, receiver.notificationEmail].filter(Boolean).join(','),
           subject: "Fonds reçus", html: htmlReceiver,
         }),
       ]);
@@ -1137,7 +1137,7 @@ export const createPaiement = async (req, res) => {
 
       await mailer.sendMail({
         from:    "noreply@bimreseau.com",
-        to:      `${sender.email}, ${ownerItem.email}, ${company.email}`,
+        to:      [sender.email, sender.notificationEmail, ownerItem.email, company.email].filter(Boolean).join(','),
         subject: "Paiement réussi - BIM",
         html:    htmlSuccess,
       });
@@ -1633,7 +1633,7 @@ export const rejectRecharge = async (req, res) => {
     try {
       if (user?.email) {
         await mailer({
-          to: user.email,
+          to: [user.email, user.notificationEmail].filter(Boolean).join(','),
           subject: 'Demande de recharge refusée — BIM',
           html: `<p>Bonjour <strong>${user.username ?? user.email}</strong>,</p>
                  <p>Votre demande de recharge de <strong>${recharge.amount} EC</strong> (réf. ${recharge.reference}) a été <strong>refusée</strong>.</p>

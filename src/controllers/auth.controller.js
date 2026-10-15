@@ -59,6 +59,86 @@ const register = async (req, res) => {
   }
 };
 
+// ── Inscription sans friction : créée silencieusement à la fin de l'onboarding,
+// sans email ni mot de passe réels. Si un téléphone est fourni et correspond à
+// un compte existant (rapide ou traditionnel), on le retrouve au lieu d'en
+// créer un nouveau. Risque assumé : aucune vérification SMS n'existe dans ce
+// backend, donc cette récupération par téléphone n'est qu'une correspondance
+// de texte, sans preuve de possession du numéro.
+const generateQuickUsername = () => `quick_${crypto.randomBytes(3).toString('hex')}`;
+const generateQuickEmail = () => `quick_${crypto.randomBytes(8).toString('hex')}@bimreseau.com`;
+
+const quickAccess = async (req, res) => {
+  const { telephone } = req.body;
+  const cleanPhone = telephone ? String(telephone).trim() : null;
+
+  try {
+    let user = cleanPhone ? await User.findOne({ where: { telephone: cleanPhone } }) : null;
+    let isNewAccount = false;
+
+    if (!user) {
+      let created = false;
+      let attempts = 0;
+      while (!created && attempts < 5) {
+        attempts++;
+        try {
+          const randomPwd = crypto.randomBytes(24).toString('hex');
+          const hashedPassword = await bcrypt.hash(randomPwd, 10);
+          user = await User.create({
+            username: generateQuickUsername(),
+            email: generateQuickEmail(),
+            password: hashedPassword,
+            telephone: cleanPhone,
+            isActive: true,
+            isQuickAccount: true,
+            accountNumber: String(generateAccountNumber()),
+            privacyAcceptedAt: new Date(),
+          });
+          created = true;
+        } catch (e) {
+          if (e.name !== 'SequelizeUniqueConstraintError') throw e;
+          // Collision d'email synthétique (improbable) — on retente avec un nouveau.
+        }
+      }
+      if (!created) {
+        return res.status(500).json({ message: 'Erreur serveur, veuillez réessayer.' });
+      }
+      isNewAccount = true;
+    }
+
+    if (!user.isActive) {
+      return res.status(409).json({
+        message: "Ce compte n'est pas activé. Contactez le support BIM NEXT.",
+      });
+    }
+
+    const payload = { userId: user.id, email: user.email };
+    let token, refreshToken;
+    if (user.isQuickAccount) {
+      payload.accountType = 'quick';
+      refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, { expiresIn: '3650d' });
+      token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '180d' });
+    } else {
+      // Compte traditionnel retrouvé via son téléphone : session identique à /auth/login.
+      refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
+      token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '2h' });
+    }
+
+    await user.update({ refreshToken, Token: token });
+
+    return res.status(200).json({
+      message: isNewAccount ? 'Compte créé avec succès' : 'Compte retrouvé avec succès',
+      token,
+      refreshToken,
+      userId: user.id,
+      isNewAccount,
+      isQuickAccount: user.isQuickAccount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
 
 
 const createAgent = async (req, res) => {
@@ -514,6 +594,7 @@ export const updateUser = async (req, res) => {
     if (req.body.poste) allowedFields.poste = req.body.poste;
     if (req.body.telephone) allowedFields.telephone = req.body.telephone;
     if (req.body.adresse) allowedFields.adresse = req.body.adresse;
+    if (req.body.notificationEmail) allowedFields.notificationEmail = req.body.notificationEmail;
 
  
     let imageUrl = userExist.imageUrl;
@@ -568,7 +649,7 @@ export const updateUser = async (req, res) => {
     }
 
     const updatedUser = await User.findByPk(id, {
-      attributes: ["id", "username", "email", "fullname", "poste", "telephone", "adresse", "imageUrl"],
+      attributes: ["id", "username", "email", "fullname", "poste", "telephone", "adresse", "imageUrl", "notificationEmail"],
     });
 
     return res.status(200).json({
@@ -701,8 +782,10 @@ const refreshToken = async (req, res) => {
     if (!user) {
       return res.status(401).json({ message: 'Invalid refresh token' });
     }
-    const newToken = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, {
-      expiresIn: '1h',
+    const payload = { userId: user.id, email: user.email };
+    if (decoded.accountType) payload.accountType = decoded.accountType;
+    const newToken = jwt.sign(payload, process.env.JWT_SECRET, {
+      expiresIn: decoded.accountType === 'quick' ? '180d' : '1h',
     });
     return res.status(200).json({ token: newToken });
   } catch (error) {
@@ -1644,6 +1727,20 @@ export const getUsersBalanceStats = async (req, res) => {
 export const getTransactionPassword = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Un utilisateur peut toujours retrouver SON PROPRE code ("J'ai oublié
+    // mon code" côté app). Voir le code d'un AUTRE utilisateur est réservé
+    // au rôle BIM (utilisé par admin-bim en support client).
+    if (Number(id) !== req.user.id) {
+      const userRoleRecord = await sequelize.models.UserRole.findOne({ where: { userId: req.user.id } });
+      const roleName = userRoleRecord
+        ? (await Role.findByPk(userRoleRecord.roleId))?.name
+        : null;
+      if (roleName !== 'BIM') {
+        return res.status(403).json({ message: "Vous ne pouvez consulter que votre propre code." });
+      }
+    }
+
     const user = await User.findByPk(id, {
       attributes: ['id', 'username', 'email', 'randomly', 'randomlyPlain'],
     });
@@ -1896,6 +1993,7 @@ export const resetAllBalances = async (req, res) => {
 
 export {
   register,
+  quickAccess,
   login,
   askPasswordReset,
   resetPassword,
