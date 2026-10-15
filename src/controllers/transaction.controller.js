@@ -2,6 +2,7 @@
 import { Transaction,TransactionRetrait,User,TransactionTransfert, TransactionRecharge,History,Notification,TransactionPaiement,Order,Company, Product, Currency} from '../models/index.js';
 import { Op } from 'sequelize';
 import { getDateRangeByPeriod } from '../utils/getDateRangeByPeriod.util.js';
+import { parseLocalDayStart, parseLocalDayEnd } from '../utils/dateRange.util.js';
 import axios from "axios";
 import dotenv from 'dotenv';
 import { generateSupportReceivedEmailTemplate, generateSupportReceivedEmailTemplatePaiement,generateSupportReceivedEmailTemplateTransfert } from '../utils/templateMails.util.js';
@@ -33,7 +34,8 @@ export const getAllTransactions = async (req, res) => {
       amount,
       transactionType,
       id,
-
+      createdAtFrom,
+      createdAtTo,
 
     } = req.query;
         const isPaginate = paginate === 'true';
@@ -98,11 +100,16 @@ export const getAllTransactions = async (req, res) => {
           [Op.gte]: startDate,
         };
       }
+    } else if (createdAtFrom || createdAtTo) {
+      const dateWhere = {};
+      if (createdAtFrom) dateWhere[Op.gte] = parseLocalDayStart(createdAtFrom);
+      if (createdAtTo) dateWhere[Op.lte] = parseLocalDayEnd(createdAtTo);
+      whereClause.createdAt = dateWhere;
     }
 
     const queryOptions = {
       where: whereClause,
-    
+
       order: [['createdAt', 'DESC']],
         include: [
     {
@@ -114,11 +121,19 @@ export const getAllTransactions = async (req, res) => {
     };
 
     if (isPaginate) {
-      const { rows, count } = await Transaction.findAndCountAll({
-        ...queryOptions,
-        limit,
-        offset,
-      });
+      const [{ rows, count }, sumResult] = await Promise.all([
+        Transaction.findAndCountAll({
+          ...queryOptions,
+          limit,
+          offset,
+        }),
+        Transaction.findOne({
+          where: whereClause,
+          attributes: [[sequelize.fn('SUM', sequelize.col('amount')), 'total']],
+          raw: true,
+        }),
+      ]);
+      const totalAmount = parseFloat(sumResult?.total ?? 0) || 0;
 
       return res.status(200).json({
         message: 'Requête passée avec succès',
@@ -127,6 +142,7 @@ export const getAllTransactions = async (req, res) => {
           page: currentPage,
           pageSize: limit,
           totalPages: Math.ceil(count / limit),
+          totalAmount,
       });
     }
 
@@ -1388,8 +1404,14 @@ export const getRechargesList = async (req, res) => {
     if (period) {
       const from = getDateRangeByPeriod(period);
       if (from) where.createdAt = { [Op.gte]: from };
-    } else if (startDate && endDate) {
-      where.createdAt = { [Op.between]: [new Date(startDate), new Date(endDate)] };
+    } else if (startDate || endDate) {
+      // `new Date("YYYY-MM-DD")` parse en UTC — avec startDate === endDate (un
+      // seul jour), `Op.between` entre deux minuits UTC ne couvrait quasiment
+      // aucune donnée. On couvre toute la journée calendaire locale.
+      const dateWhere = {};
+      if (startDate) dateWhere[Op.gte] = parseLocalDayStart(startDate);
+      if (endDate) dateWhere[Op.lte] = parseLocalDayEnd(endDate);
+      where.createdAt = dateWhere;
     }
 
     if (search) {
@@ -1482,8 +1504,11 @@ export const getRetraitsList = async (req, res) => {
     if (period) {
       const from = getDateRangeByPeriod(period);
       if (from) where.createdAt = { [Op.gte]: from };
-    } else if (startDate && endDate) {
-      where.createdAt = { [Op.between]: [new Date(startDate), new Date(endDate)] };
+    } else if (startDate || endDate) {
+      const dateWhere = {};
+      if (startDate) dateWhere[Op.gte] = parseLocalDayStart(startDate);
+      if (endDate) dateWhere[Op.lte] = parseLocalDayEnd(endDate);
+      where.createdAt = dateWhere;
     }
 
     const [{ rows, count }, sumResult] = await Promise.all([
@@ -1523,8 +1548,11 @@ export const getPaiementsList = async (req, res) => {
     if (period) {
       const from = getDateRangeByPeriod(period);
       if (from) where.createdAt = { [Op.gte]: from };
-    } else if (startDate && endDate) {
-      where.createdAt = { [Op.between]: [new Date(startDate), new Date(endDate)] };
+    } else if (startDate || endDate) {
+      const dateWhere = {};
+      if (startDate) dateWhere[Op.gte] = parseLocalDayStart(startDate);
+      if (endDate) dateWhere[Op.lte] = parseLocalDayEnd(endDate);
+      where.createdAt = dateWhere;
     }
 
     if (search) {

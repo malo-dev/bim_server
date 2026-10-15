@@ -1,7 +1,7 @@
 /* eslint-disable no-undef */
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { User, Role, BranchTrack, Commerce, Company, BusinessCategory, Order, Transaction, UserSOS } from '../models/index.js';
+import { User, Role, BranchTrack, Commerce, Company, BusinessCategory, Order, Transaction, UserSOS, TransactionRecharge } from '../models/index.js';
 import sequelize from '../config/database.js';
 import { Op } from 'sequelize';
 import crypto from 'crypto';
@@ -13,6 +13,7 @@ import { generateNewLoginAlertEmailTemplate,generateTransactionPasswordEmailTemp
 import { generateAccountNumber,generateAccountNumberAgent} from '../utils/generateAccountNumber.util.js';
 import { generatePassword6Digits,getFormattedDateTime} from '../utils/calculFrais.util.js';
 import { getDateRangeByPeriod } from '../utils/getDateRangeByPeriod.util.js';
+import { parseLocalDayStart, parseLocalDayEnd } from '../utils/dateRange.util.js';
 import { creditBim, OWNER_EMAIL } from './recharge.controller.js';
 const generateOtp = () => {
   return Math.floor(100000 + Math.random() * 900000).toString(); // OTP 6 chiffres
@@ -468,12 +469,8 @@ const getAllUsers = async (req, res) => {
 
     if (createdAtFrom || createdAtTo) {
       const dateWhere = {};
-      if (createdAtFrom) dateWhere[Op.gte] = new Date(createdAtFrom);
-      if (createdAtTo) {
-        const end = new Date(createdAtTo);
-        end.setHours(23, 59, 59, 999);
-        dateWhere[Op.lte] = end;
-      }
+      if (createdAtFrom) dateWhere[Op.gte] = parseLocalDayStart(createdAtFrom);
+      if (createdAtTo) dateWhere[Op.lte] = parseLocalDayEnd(createdAtTo);
       whereClause.createdAt = dateWhere;
     }
 
@@ -1712,22 +1709,24 @@ export const getUsersBalanceStats = async (req, res) => {
       if (periodStart) periodWhere.createdAt = { [Op.gte]: periodStart };
     } else if (createdAtFrom || createdAtTo) {
       const dateWhere = {};
-      if (createdAtFrom) dateWhere[Op.gte] = new Date(createdAtFrom);
-      if (createdAtTo) {
-        const end = new Date(createdAtTo);
-        end.setHours(23, 59, 59, 999);
-        dateWhere[Op.lte] = end;
-      }
+      if (createdAtFrom) dateWhere[Op.gte] = parseLocalDayStart(createdAtFrom);
+      if (createdAtTo) dateWhere[Op.lte] = parseLocalDayEnd(createdAtTo);
       periodWhere.createdAt = dateWhere;
     }
 
-    const [totalBalance, totalUsers, activeUsers, newUsers] = await Promise.all([
+    // Montant rechargé (FlexPay + recharges manuelles approuvées) sur la
+    // même période que `newUsers` — même filtre de date que `periodWhere`.
+    const rechargeWhere = { status: 'success' };
+    if (periodWhere.createdAt) rechargeWhere.createdAt = periodWhere.createdAt;
+
+    const [totalBalance, totalUsers, activeUsers, newUsers, totalRecharged] = await Promise.all([
       // Solde total = TOUJOURS la somme de tous les utilisateurs (pas de filtre date)
       User.sum('soldNumber', { where: baseWhere }),
       User.count({ where: baseWhere }),
       User.count({ where: { ...baseWhere, isActive: true } }),
       // Nouveaux inscrits sur la période sélectionnée
       User.count({ where: periodWhere }),
+      TransactionRecharge.sum('amount', { where: rechargeWhere }),
     ]);
 
     return res.status(200).json({
@@ -1735,6 +1734,7 @@ export const getUsersBalanceStats = async (req, res) => {
       totalUsers,
       activeUsers,
       newUsers,
+      totalRecharged: totalRecharged ?? 0,
       period: period || 'all',
     });
   } catch (error) {
