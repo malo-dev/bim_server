@@ -38,6 +38,7 @@ import RideRoutes       from './src/routers/ride.routes.js'
 import RideTierRoutes   from './src/routers/rideTier.routes.js'
 import TransportMapRoutes from './src/routers/transportMap.routes.js'
 import ProductConsumptionRoutes from './src/routers/productConsumption.routes.js'
+import AccessCodeRoutes from './src/routers/accessCode.routes.js'
 import path from 'path';
 const app = express();
 dotenv.config();
@@ -143,6 +144,7 @@ app.use('/api/v1/ride',        RideRoutes)
 app.use('/api/v1/ride-tiers',  RideTierRoutes)
 app.use('/transport',          TransportMapRoutes)
 app.use('/api/v1/consumption', ProductConsumptionRoutes)
+app.use('/api/v1/access-code', AccessCodeRoutes)
 
 
 app.get('/', (req, res) => {
