@@ -15,6 +15,7 @@ import { generatePassword6Digits,getFormattedDateTime} from '../utils/calculFrai
 import { getDateRangeByPeriod } from '../utils/getDateRangeByPeriod.util.js';
 import { parseLocalDayStart, parseLocalDayEnd } from '../utils/dateRange.util.js';
 import { creditBim, OWNER_EMAIL } from './recharge.controller.js';
+import { notifyBimAdmins } from '../services/bimAdminNotify.service.js';
 const generateOtp = () => {
   return Math.floor(100000 + Math.random() * 900000).toString(); // OTP 6 chiffres
 };
@@ -145,6 +146,10 @@ const quickAccess = async (req, res) => {
       deviceModel: deviceModel || user.deviceModel,
       deviceBrand: deviceBrand || user.deviceBrand,
     });
+
+    if (isNewAccount) {
+      notifyBimAdmins('🆕 Nouveau compte', `Un nouvel utilisateur vient de s'inscrire (${user.username}).`).catch(() => {});
+    }
 
     return res.status(200).json({
       message: isNewAccount ? 'Compte créé avec succès' : 'Compte retrouvé avec succès',
