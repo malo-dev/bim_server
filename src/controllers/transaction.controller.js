@@ -12,6 +12,7 @@ import jwt from "jsonwebtoken";
 import { generateReferenceRecharge } from '../utils/generateReferenceSecond.js';
 import { sendPushNotification } from '../services/pushNotification.service.js';
 import { emitToUser } from '../services/socket.service.js';
+import { notifyBimAdmins } from '../services/bimAdminNotify.service.js';
 /* ================= CONFIG RETRAIT ================= */
 
 const RETRAIT_CONFIG = {
@@ -369,6 +370,10 @@ export const createRetrait = async (req, res) => {
     if (userAgent.expoPushToken) {
       sendPushNotification(userAgent.expoPushToken, pushPayloadAgent.title, pushPayloadAgent.message).catch(() => {});
     }
+    notifyBimAdmins(
+      "💸 Retrait effectué",
+      `${userSender.username ?? "Un utilisateur"} a retiré ${retraitAmount} EC.`
+    ).catch(() => {});
 
     return res.status(201).json({
       message: "Retrait effectué avec succès",

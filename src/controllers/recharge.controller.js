@@ -7,6 +7,7 @@ import { generateSupportReceivedEmailTemplateRecharge } from '../utils/templateM
 import { generateReferenceRecharge } from '../utils/generateReferenceSecond.js';
 import { emitToUser } from '../services/socket.service.js';
 import { mailer } from '../utils/sendEmail.utils.js';
+import { notifyBimAdmins } from '../services/bimAdminNotify.service.js';
 import sequelize  from '../config/database.js';
 
 /* ─── CONFIG ────────────────────────────────────────────────────────── */
@@ -405,6 +406,10 @@ export const flexpayCallback = async (req, res) => {
       emitToUser(rechargeRecord.id, "recharge:success", payload);
       console.log(`📤 [flexpayCallback] Socket "recharge:success" émis →`, JSON.stringify(payload, null, 2));
       sendConfirmationEmail(userItem, ownerItem, rawAmount, montantCredite);
+      notifyBimAdmins(
+        "💰 Nouvelle recharge",
+        `${userItem.username ?? "Un utilisateur"} a rechargé ${montantCredite} EC.`
+      ).catch(() => {});
     }
 
     return res.status(200).json({ message: "Callback traité — compte crédité" });

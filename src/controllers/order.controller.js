@@ -2,8 +2,10 @@ import { Op } from "sequelize";
 import { Order, User, Company, Product, Currency, TransactionPaiement, Transaction, Notification, Livreur } from "../models/index.js";
 import sequelize from "../config/database.js";
 import { getDateRangeByPeriod } from "../utils/getDateRangeByPeriod.util.js";
+import { parseLocalDayStart, parseLocalDayEnd } from "../utils/dateRange.util.js";
 import { emitOrderUpdate, emitToUser } from "../services/socket.service.js";
 import { recordConsumptionAndMaybeGrantBonus } from "../services/loyalty.service.js";
+import { notifyBimAdmins } from "../services/bimAdminNotify.service.js";
 
 export const createOrder = async (req, res) => {
   try {
@@ -65,7 +67,7 @@ export const createOrder = async (req, res) => {
 
     // Push notification to the client confirming order received
     try {
-      const sender = await User.findByPk(userId, { attributes: ['id', 'expoPushToken'] });
+      const sender = await User.findByPk(userId, { attributes: ['id', 'username', 'expoPushToken'] });
       if (sender?.expoPushToken) {
         const { sendPushNotification } = await import('../services/pushNotification.service.js');
         await sendPushNotification(
@@ -74,6 +76,10 @@ export const createOrder = async (req, res) => {
           `Votre commande ${orderNumber} (${grandTotal} EC) a bien été envoyée. Suivez son avancement dans l'app.`
         );
       }
+      notifyBimAdmins(
+        "🛒 Nouvelle commande",
+        `${sender?.username ?? "Un utilisateur"} a passé une commande de ${grandTotal} EC (${orderNumber}).`
+      ).catch(() => {});
     } catch {}
 
     return res.status(201).json({ orderNumber, orders: created });
@@ -290,10 +296,14 @@ export const getOrders = async (req, res) => {
     if (productId) where.productId = productId;
     if (status) where.status = status;
 
-    if (startDate && endDate) {
-      where.createdAt = {
-        [Op.between]: [new Date(startDate), new Date(endDate)],
-      };
+    if (startDate || endDate) {
+      // `new Date("YYYY-MM-DD")` parse en UTC — avec startDate === endDate
+      // (un seul jour), `Op.between` entre deux minuits UTC ne couvrait
+      // quasiment aucune donnée. On couvre toute la journée calendaire locale.
+      const dateWhere = {};
+      if (startDate) dateWhere[Op.gte] = parseLocalDayStart(startDate);
+      if (endDate) dateWhere[Op.lte] = parseLocalDayEnd(endDate);
+      where.createdAt = dateWhere;
     }
 
     if (search) {
