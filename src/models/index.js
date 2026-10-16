@@ -39,6 +39,7 @@ import Chauffeur from './chauffeur.model.js';
 import Ride from './ride.model.js';
 import RideTier from './rideTier.model.js';
 import ProductConsumption from './productConsumption.model.js';
+import AccessCode from './accessCode.model.js';
 
 const CASCADE   = { onDelete: 'CASCADE', onUpdate: 'CASCADE' };
 const SET_NULL  = { onDelete: 'SET NULL', onUpdate: 'CASCADE' };
@@ -321,4 +322,5 @@ export {
   Chauffeur,
   Ride,
   RideTier,
+  AccessCode,
 };

@@ -1,6 +1,6 @@
 import { createServer } from 'http';
 import app from '../app.js';
-import './models/index.js';
+import { AccessCode } from './models/index.js';
 import sequelize from './config/database.js';
 import { initSocket } from './services/socket.service.js';
 
@@ -168,6 +168,16 @@ sequelize.query('SET FOREIGN_KEY_CHECKS=0')
       `);
       console.log('✅ livreur_sos créée');
     } catch { /* déjà existant */ }
+
+    // Codes d'accès staff — migration depuis les valeurs codées en dur dans
+    // bim/constants/accessCodes.ts, pour que le passage en base ne bloque
+    // pas l'accès du personnel déjà en poste.
+    try {
+      await AccessCode.findOrCreate({ where: { role: 'BIM' }, defaults: { code: '482913' } });
+      await AccessCode.findOrCreate({ where: { role: 'LIVREUR' }, defaults: { code: '571604' } });
+      await AccessCode.findOrCreate({ where: { role: 'CHAUFFEUR' }, defaults: { code: '693258' } });
+      console.log('✅ access_codes initialisés');
+    } catch (e) { console.error('access_codes init:', e.message); }
 
     httpServer.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
