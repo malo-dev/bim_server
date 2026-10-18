@@ -156,4 +156,16 @@ app.get('/', (req, res) => {
   });
 });
 
+// Filet de sécurité final : toute erreur non attrapée dans un contrôleur ou
+// un middleware (ex: multer qui échoue à écrire un fichier uploadé) finissait
+// silencieusement en "Internal Server Error" sans rien logger côté serveur —
+// impossible à diagnostiquer. On logge systématiquement la stack ici.
+app.use((err, req, res, next) => {
+  console.error(`❌ [${req.method} ${req.originalUrl}]`, err.stack || err);
+  if (res.headersSent) return next(err);
+  res.status(err.status || 500).json({
+    message: err.message || 'Erreur serveur interne',
+  });
+});
+
 export default app;
