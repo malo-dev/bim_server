@@ -10,8 +10,12 @@ const Chauffeur = sequelize.define('Chauffeur', {
   },
   userId: {
     type: DataTypes.INTEGER,
-    allowNull: false,
+    allowNull: true, // null jusqu'à ce que le chauffeur se connecte avec son code d'accès
   },
+  fullname: { type: DataTypes.STRING, allowNull: true },
+  // Code personnel généré à la création par l'admin, donné au chauffeur pour
+  // accéder à l'Espace Chauffeur sans avoir besoin d'un compte BIM existant.
+  accessCode: { type: DataTypes.STRING(10), allowNull: true, unique: true },
   telephone: {
     type: DataTypes.STRING(30),
     allowNull: true,
