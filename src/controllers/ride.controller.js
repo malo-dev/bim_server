@@ -279,7 +279,11 @@ export const startRide = async (req, res) => {
     if (!ride) return res.status(404).json({ message: 'Course introuvable' });
     if (!['accepted', 'arriving'].includes(ride.status)) return res.status(400).json({ message: 'Statut de course invalide' });
 
-    await ride.update({ status: 'in_progress' });
+    // On repart de 0 km au démarrage réel de la course : `distanceKm` servait
+    // jusqu'ici à l'estimation (pickup → destination à vol d'oiseau), le
+    // compteur en temps réel (voir chauffeur.controller.updateLocation) part
+    // du point de prise en charge, pas de l'estimation de départ.
+    await ride.update({ status: 'in_progress', distanceKm: 0 });
     emitRideUpdate(ride.rideNumber, { status: 'in_progress' });
     return res.status(200).json({ message: 'Course démarrée', data: ride });
   } catch (error) {
@@ -352,7 +356,16 @@ async function completeRideInternal(ride) {
   try {
     const passenger = await User.findByPk(ride.userId, { transaction: t, lock: t.LOCK.UPDATE });
     const chauffeur = await Chauffeur.findByPk(ride.chauffeurId, { transaction: t });
-    const fare = parseFloat(ride.estimatedFare);
+
+    // Prix final basé sur la distance réellement parcourue (compteur en
+    // temps réel démarré avec "Démarrer la course") plutôt que la simple
+    // estimation de départ — sauf si le compteur n'a jamais avancé (ex: GPS
+    // indisponible), où l'estimation de départ reste la meilleure base.
+    const tier = await RideTier.findByPk(ride.vehicleTier, { transaction: t });
+    const trackedKm = parseFloat(ride.distanceKm || 0);
+    const fare = (tier && trackedKm > 0.05)
+      ? parseFloat((Number(tier.base) + Number(tier.perKm) * trackedKm).toFixed(2))
+      : parseFloat(ride.estimatedFare);
     let paymentStatus = 'pending';
 
     if (passenger && parseFloat(passenger.soldNumber || 0) >= fare) {
@@ -590,10 +603,14 @@ export const adminAssignChauffeur = async (req, res) => {
 // ── Chauffeurs en ligne et disponibles, pour le sélecteur d'assignation admin ──
 export const getAvailableChauffeursAdmin = async (req, res) => {
   try {
+    // Pas de condition `isOnline` : contrairement au matching automatique de
+    // l'app (qui pousse l'offre en temps réel), l'admin appelle lui-même le
+    // chauffeur par téléphone — il n'a donc pas besoin d'avoir l'app ouverte
+    // pour être assignable, juste d'être actif et pas déjà sur une course.
     const chauffeurs = await Chauffeur.findAll({
-      where: { status: 'active', isOnline: true, isAvailable: true },
+      where: { status: 'active', isAvailable: true },
       include: [{ model: User, as: 'user', attributes: ['id', 'username', 'telephone'] }],
-      order: [['rating', 'DESC']],
+      order: [['isOnline', 'DESC'], ['rating', 'DESC']],
     });
     return res.status(200).json({ data: chauffeurs });
   } catch (error) {

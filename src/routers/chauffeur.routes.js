@@ -9,11 +9,15 @@ import {
   deleteChauffeur,
   toggleOnline,
   updateLocation,
+  chauffeurAccessLogin,
 } from '../controllers/chauffeur.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 import upload from '../../middlewares/upload.js';
 
 const router = express.Router();
+
+// Public — connexion par code d'accès personnel (pas de compte requis au préalable)
+router.post('/access', chauffeurAccessLogin);
 
 router.get('/', authMiddleware, getAllChauffeurs);
 router.get('/me', authMiddleware, getMyChauffeur);
