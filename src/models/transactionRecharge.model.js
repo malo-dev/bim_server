@@ -47,6 +47,19 @@ const TransactionRecharge = sequelize.define(
       allowNull: false,
       comment: 'Référence de l’utilisateur',
     },
+
+    currency: {
+      type: DataTypes.STRING(10),
+      allowNull: false,
+      defaultValue: 'USD',
+      comment: "Devise réellement débitée chez FlexPay (USD ou CDF) — `amount` reste toujours l'équivalent EC crédité",
+    },
+
+    convertedAmount: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      comment: "Montant réellement débité en devise d'origine (ex: en CDF) quand currency = CDF",
+    },
   },
   {
     tableName: 'transactionsRecharge',
