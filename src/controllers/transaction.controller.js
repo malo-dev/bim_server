@@ -218,8 +218,9 @@ export const createRetrait = async (req, res) => {
   let mainTransaction = null;
 
   try {
-    const { amount, accountNumber, id } = req.body;
+    const { amount, accountNumber, id, currency } = req.body;
     const retraitAmount = Number(amount);
+    const retraitCurrency = currency === "CDF" ? "CDF" : "USD";
 
     if (!id || !amount || !accountNumber) {
       return res.status(400).json({ message: "Tous les champs sont obligatoires" });
@@ -227,6 +228,21 @@ export const createRetrait = async (req, res) => {
 
     if (retraitAmount <= 0) {
       return res.status(400).json({ message: "Montant invalide" });
+    }
+
+    // ── Conversion d'affichage uniquement : le solde reste débité en EC
+    // (1 EC = 1 USD, convention du projet). Si l'utilisateur choisit CDF,
+    // on calcule juste le montant équivalent en francs pour que l'agent
+    // sache combien remettre en cash — aucun appel FlexPay, aucun changement
+    // de logique de solde. ──
+    let convertedAmount = null;
+    if (retraitCurrency === "CDF") {
+      const cdfCurrency = await Currency.findOne({ where: { code: "CDF" } });
+      const rate = Number(cdfCurrency?.rate || 0);
+      if (!rate) {
+        return res.status(400).json({ message: "Taux de change CDF indisponible pour le moment. Réessayez en USD." });
+      }
+      convertedAmount = retraitAmount * rate;
     }
 
     const userSender = await User.findByPk(Number(id));
@@ -294,6 +310,8 @@ export const createRetrait = async (req, res) => {
         id: userSender.id,
         targetId: userAgent.id,
         status: "réussi",
+        currency: retraitCurrency,
+        convertedAmount,
       },
       { transaction: t }
     );
@@ -316,13 +334,17 @@ export const createRetrait = async (req, res) => {
       [
         {
           title: "Retrait réussi ",
-          message: `Votre retrait de ${retraitAmount}$ a été effectué. Frais: ${fraisTotal}$ (total débité: ${totalDebit}$).`,
+          message: retraitCurrency === "CDF"
+            ? `Votre retrait de ${retraitAmount}$ (${convertedAmount.toLocaleString("fr-FR")} FC) a été effectué. Frais: ${fraisTotal}$ (total débité: ${totalDebit}$).`
+            : `Votre retrait de ${retraitAmount}$ a été effectué. Frais: ${fraisTotal}$ (total débité: ${totalDebit}$).`,
           type: "SUCCESS",
           userId: userSender.id,
         },
         {
           title: "Nouveau retrait ",
-          message: `Vous avez reçu un retrait de ${retraitAmount}$ + frais agent ${fraisAgent}$.`,
+          message: retraitCurrency === "CDF"
+            ? `Retrait de ${retraitAmount}$ (à remettre en espèces : ${convertedAmount.toLocaleString("fr-FR")} FC) + frais agent ${fraisAgent}$.`
+            : `Vous avez reçu un retrait de ${retraitAmount}$ + frais agent ${fraisAgent}$.`,
           type: "INFO",
           userId: userAgent.id,
         },
@@ -354,11 +376,15 @@ export const createRetrait = async (req, res) => {
     // ── Push notifications + Socket temps réel ──
     const pushPayloadSender = {
       title: "Retrait réussi ",
-      message: `Votre retrait de ${retraitAmount}$ a été effectué. Total débité: ${totalDebit}$.`,
+      message: retraitCurrency === "CDF"
+        ? `Votre retrait de ${retraitAmount}$ (${convertedAmount.toLocaleString("fr-FR")} FC) a été effectué. Total débité: ${totalDebit}$.`
+        : `Votre retrait de ${retraitAmount}$ a été effectué. Total débité: ${totalDebit}$.`,
     };
     const pushPayloadAgent = {
       title: "Nouveau retrait ",
-      message: `Retrait de ${retraitAmount}$ + frais agent ${fraisAgent}$ crédités.`,
+      message: retraitCurrency === "CDF"
+        ? `Retrait de ${retraitAmount}$ — remettre ${convertedAmount.toLocaleString("fr-FR")} FC en cash. Frais agent ${fraisAgent}$ crédités.`
+        : `Retrait de ${retraitAmount}$ + frais agent ${fraisAgent}$ crédités.`,
     };
 
     emitToUser(userSender.id, "notification", { ...pushPayloadSender, type: "SUCCESS" });
@@ -382,6 +408,8 @@ export const createRetrait = async (req, res) => {
       fraisTotal,
       fraisAgent,
       fraisOwner,
+      currency: retraitCurrency,
+      convertedAmount,
     });
   } catch (error) {
     await t.rollback();

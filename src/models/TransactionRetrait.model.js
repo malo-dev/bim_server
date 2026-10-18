@@ -53,6 +53,19 @@ const TransactionRetrait = sequelize.define(
       allowNull: true,
       comment: 'Référence du commerce',
     },
+
+    currency: {
+      type: DataTypes.STRING(10),
+      allowNull: false,
+      defaultValue: 'USD',
+      comment: "Devise choisie par l'utilisateur pour le retrait (USD ou CDF) — le solde reste débité en EC, ceci sert juste à indiquer à l'agent dans quelle devise remettre le cash",
+    },
+
+    convertedAmount: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      comment: 'Montant converti dans la devise choisie (ex: en CDF), calculé au taux en vigueur au moment du retrait',
+    },
   },
   {
     tableName: 'transactionsRetrait',
