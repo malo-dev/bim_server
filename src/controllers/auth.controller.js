@@ -1292,6 +1292,7 @@ export const getDashboardStats = async (req, res) => {
       blockedUsers,
       totalTransactions,
       totalOrders,
+      ordersCompleted,
       totalCompanies,
       totalSectors,
     ] = await Promise.all([
@@ -1301,6 +1302,7 @@ export const getDashboardStats = async (req, res) => {
       User.count({ where: { isBlocked: true } }),
       Transaction.count({ where: periodWhere }),
       Order.count({ where: periodWhere }),
+      Order.count({ where: { ...periodWhere, status: 'delivered' } }),
       Company.count(),
       BusinessCategory.count(),
     ]);
@@ -1312,6 +1314,8 @@ export const getDashboardStats = async (req, res) => {
       blockedUsers,
       totalTransactions,
       totalOrders,
+      ordersCompleted,
+      ordersPending: totalOrders - ordersCompleted,
       totalCompanies,
       totalSectors,
       period: period || 'all',
