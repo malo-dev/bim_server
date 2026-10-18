@@ -2,7 +2,7 @@
 import jwt       from 'jsonwebtoken';
 import axios     from 'axios';
 import { Op }    from 'sequelize';
-import { User, Notification, Transaction, History, TransactionRecharge } from '../models/index.js';
+import { User, Notification, Transaction, History, TransactionRecharge, Currency } from '../models/index.js';
 import { generateSupportReceivedEmailTemplateRecharge } from '../utils/templateMails.util.js';
 import { generateReferenceRecharge } from '../utils/generateReferenceSecond.js';
 import { emitToUser } from '../services/socket.service.js';
@@ -221,6 +221,23 @@ export const recharge = async (req, res) => {
       ? String(CurrencyValue).toUpperCase()
       : "USD";
 
+    /* ── Si CDF : le montant saisi par l'utilisateur est en francs (c'est ce
+       que FlexPay débite réellement chez lui). On convertit en EC (=USD) au
+       taux en vigueur pour le crédit interne — 1 EC = 1 USD, jamais de FCFA
+       affiché côté solde. `chargeAmount` (francs) part vers FlexPay, `amount`
+       (EC) devient le montant réellement crédité sur le compte. ── */
+    const chargeAmount = amount;
+    let convertedAmount = null;
+    if (currency === "CDF") {
+      const cdfCurrency = await Currency.findOne({ where: { code: "CDF" } });
+      const rate = Number(cdfCurrency?.rate || 0);
+      if (!rate) {
+        return res.status(400).json({ message: "Taux de change CDF indisponible pour le moment. Réessayez en USD." });
+      }
+      convertedAmount = chargeAmount;
+      amount = chargeAmount / rate;
+    }
+
     const isMobile = MOBILE_MONEY_PROVIDERS.has(String(PayTypeValue));
     const isCard   = String(PayTypeValue) === "Card";
 
@@ -254,6 +271,8 @@ export const recharge = async (req, res) => {
        ×10 / ÷10 (arrondi en deux temps → 12.47 devient 13). ── */
     rechargeRecord = await TransactionRecharge.create({
       amount:    amount,
+      currency,
+      convertedAmount,
       telephone,
       reference,
       id:        userId,
@@ -265,7 +284,7 @@ export const recharge = async (req, res) => {
        Retourne une URL de redirection ; le crédit se fait via callback
        ════════════════════════════════════════════════════════════════ */
     if (isCard) {
-      const cardData = await callFlexPayCard(reference, amount, currency);
+      const cardData = await callFlexPayCard(reference, chargeAmount, currency);
       console.log("[recharge] FlexPay Card 👉", cardData);
 
       if (String(cardData?.code) !== "0") {
@@ -282,6 +301,8 @@ export const recharge = async (req, res) => {
         redirectUrl: cardData.url,
         orderNumber: cardData.orderNumber,
         reference,
+        currency,
+        convertedAmount,
       });
     }
 
@@ -289,7 +310,7 @@ export const recharge = async (req, res) => {
        MOBILE MONEY → FlexPay Payment Service
        code=0 = requête envoyée, on attend le callback pour créditer
        ════════════════════════════════════════════════════════════════ */
-    const mobileData = await callFlexPayMobile(telephone, reference, amount, currency);
+    const mobileData = await callFlexPayMobile(telephone, reference, chargeAmount, currency);
     console.log("[recharge] FlexPay Mobile 👉", mobileData);
 
     if (String(mobileData?.code) !== "0") {
@@ -310,6 +331,8 @@ export const recharge = async (req, res) => {
       orderNumber: mobileData.orderNumber,
       reference,
       status: "pending",
+      currency,
+      convertedAmount,
     });
 
   } catch (error) {
