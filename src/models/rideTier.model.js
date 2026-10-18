@@ -15,6 +15,7 @@ const RideTier = sequelize.define('RideTier', {
   etaMin: { type: DataTypes.INTEGER, defaultValue: 3 },
   active: { type: DataTypes.BOOLEAN, defaultValue: true },
   sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
+  imageUrl: { type: DataTypes.STRING, allowNull: true },
 }, {
   tableName: 'ride_tiers',
   timestamps: true,

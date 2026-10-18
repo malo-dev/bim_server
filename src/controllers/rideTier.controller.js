@@ -1,4 +1,6 @@
 import { RideTier } from '../models/index.js';
+import fs from 'fs';
+import path from 'path';
 
 // ── Liste des gammes (public — app mobile + admin) ──────────────────────────
 export const getAllTiers = async (req, res) => {
@@ -25,6 +27,7 @@ export const createTier = async (req, res) => {
     const tier = await RideTier.create({
       tierKey, label, base, perKm,
       seats: seats || 4, etaMin: etaMin || 3, sortOrder: sortOrder || 0,
+      imageUrl: req.file ? `/images/${req.file.filename}` : null,
     });
     return res.status(201).json({ message: 'Gamme créée', data: tier });
   } catch (error) {
@@ -37,7 +40,22 @@ export const updateTier = async (req, res) => {
   try {
     const tier = await RideTier.findByPk(req.params.tierKey);
     if (!tier) return res.status(404).json({ message: 'Gamme introuvable' });
-    await tier.update(req.body);
+
+    const updateData = { ...req.body };
+
+    if (req.file) {
+      if (tier.imageUrl) {
+        try {
+          const oldImagePath = path.join('public', tier.imageUrl.replace('/images/', 'images/'));
+          if (fs.existsSync(oldImagePath)) fs.unlinkSync(oldImagePath);
+        } catch (fsError) {
+          console.error('Erreur suppression ancienne image (ride tier):', fsError);
+        }
+      }
+      updateData.imageUrl = `/images/${req.file.filename}`;
+    }
+
+    await tier.update(updateData);
     return res.status(200).json({ message: 'Gamme mise à jour', data: tier });
   } catch (error) {
     return res.status(500).json({ message: error.message });
