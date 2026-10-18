@@ -623,11 +623,27 @@ export const updateUser = async (req, res) => {
     if (req.body.fullname) allowedFields.fullname = req.body.fullname; // ou le nom de colonne correct
     if (req.body.email) allowedFields.email = req.body.email;
     if (req.body.poste) allowedFields.poste = req.body.poste;
-    if (req.body.telephone) allowedFields.telephone = req.body.telephone;
+    if (req.body.telephone) {
+      // Deux comptes ne doivent jamais partager le même numéro — sans ce
+      // contrôle, compléter son numéro (CompletePhoneModal) ou modifier son
+      // profil pouvait silencieusement dupliquer le numéro d'un autre compte.
+      const cleanPhone = String(req.body.telephone).trim();
+      if (cleanPhone !== (userExist.telephone || '').trim()) {
+        const phoneTaken = await User.findOne({
+          where: { telephone: cleanPhone, id: { [Op.ne]: userExist.id } },
+        });
+        if (phoneTaken) {
+          return res.status(409).json({
+            message: "Ce numéro de téléphone est déjà utilisé par un autre compte.",
+          });
+        }
+      }
+      allowedFields.telephone = cleanPhone;
+    }
     if (req.body.adresse) allowedFields.adresse = req.body.adresse;
     if (req.body.notificationEmail) allowedFields.notificationEmail = req.body.notificationEmail;
 
- 
+
     let imageUrl = userExist.imageUrl;
 
     if (req.file) {
