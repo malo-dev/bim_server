@@ -1,4 +1,5 @@
 import { Ride, Chauffeur, User, Transaction, RideTier } from '../models/index.js';
+import { Op } from 'sequelize';
 import sequelize from '../config/database.js';
 import { getIO, emitToUser } from '../services/socket.service.js';
 
@@ -497,6 +498,105 @@ export const rateRide = async (req, res) => {
     return res.status(200).json({ message: 'Merci pour votre avis', data: ride });
   } catch (error) {
     await t.rollback();
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+/* ════════════════════════════════════════════════════════════════════════
+   ADMIN — supervision des courses (admin-bim)
+   ════════════════════════════════════════════════════════════════════════ */
+
+// ── Liste de toutes les courses (tous utilisateurs) — filtrable par statut/période ──
+export const getAllRidesAdmin = async (req, res) => {
+  try {
+    const { page = 1, pageSize = 20, status, period } = req.query;
+    const limit = parseInt(pageSize, 10);
+    const offset = (parseInt(page, 10) - 1) * limit;
+
+    const where = {};
+    if (status) where.status = status;
+    if (period) {
+      const start = new Date();
+      if (period === 'today') start.setHours(0, 0, 0, 0);
+      else if (period === 'week') start.setDate(start.getDate() - 7);
+      else if (period === 'month') start.setMonth(start.getMonth() - 1);
+      where.createdAt = { [Op.gte]: start };
+    }
+
+    const { rows, count } = await Ride.findAndCountAll({
+      where,
+      order: [['createdAt', 'DESC']],
+      limit, offset,
+      include: [
+        { model: User, as: 'passenger', attributes: ['id', 'username', 'email', 'telephone'] },
+        {
+          model: Chauffeur, as: 'chauffeur',
+          include: [{ model: User, as: 'user', attributes: ['id', 'username', 'telephone'] }],
+        },
+      ],
+    });
+
+    return res.status(200).json({ data: rows, total: count, currentPage: parseInt(page, 10), totalPages: Math.ceil(count / limit) });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+// ── Assignation manuelle d'un chauffeur par un admin (dispatch) ──────────────
+// Utile quand le matching automatique ne trouve personne, ou pour prioriser
+// un chauffeur précis — l'admin appelle alors lui-même le chauffeur pour lui
+// dire d'aller récupérer le client, donc pas besoin d'un accept/decline côté
+// chauffeur comme pour une offre automatique : l'affectation est immédiate.
+export const adminAssignChauffeur = async (req, res) => {
+  try {
+    const { rideNumber } = req.params;
+    const { chauffeurId } = req.body;
+    if (!chauffeurId) return res.status(400).json({ message: 'chauffeurId est obligatoire' });
+
+    const ride = await Ride.findOne({ where: { rideNumber } });
+    if (!ride) return res.status(404).json({ message: 'Course introuvable' });
+    if (ride.status !== 'searching') {
+      return res.status(400).json({ message: 'Cette course n\'est plus en attente d\'un chauffeur' });
+    }
+
+    const chauffeur = await Chauffeur.findByPk(chauffeurId);
+    if (!chauffeur) return res.status(404).json({ message: 'Chauffeur introuvable' });
+    if (!chauffeur.isAvailable) {
+      return res.status(400).json({ message: 'Ce chauffeur n\'est pas disponible actuellement' });
+    }
+
+    clearOffer(ride.rideId);
+    await chauffeur.update({ isAvailable: false });
+    await ride.update({ chauffeurId: chauffeur.chauffeurId, status: 'accepted', pickupCode: genPickupCode() });
+
+    emitRideUpdate(ride.rideNumber, { status: 'accepted', chauffeurId: chauffeur.chauffeurId });
+    emitToUser(chauffeur.userId, 'ride:incoming', {
+      rideNumber: ride.rideNumber,
+      pickupAddress: ride.pickupAddress,
+      destinationAddress: ride.destinationAddress,
+      distanceKm: ride.distanceKm,
+      durationMin: ride.durationMin,
+      estimatedFare: ride.estimatedFare,
+      vehicleTier: ride.vehicleTier,
+      assignedByAdmin: true,
+    });
+
+    return res.status(200).json({ message: 'Chauffeur assigné à la course', data: ride });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+// ── Chauffeurs en ligne et disponibles, pour le sélecteur d'assignation admin ──
+export const getAvailableChauffeursAdmin = async (req, res) => {
+  try {
+    const chauffeurs = await Chauffeur.findAll({
+      where: { status: 'active', isOnline: true, isAvailable: true },
+      include: [{ model: User, as: 'user', attributes: ['id', 'username', 'telephone'] }],
+      order: [['rating', 'DESC']],
+    });
+    return res.status(200).json({ data: chauffeurs });
+  } catch (error) {
     return res.status(500).json({ message: error.message });
   }
 };

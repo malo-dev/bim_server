@@ -1,5 +1,5 @@
 import express from 'express';
-import { renderTransportMap, geocodeAddress } from '../controllers/transportMap.controller.js';
+import { renderTransportMap, geocodeAddress, autocompleteAddress, placeDetails } from '../controllers/transportMap.controller.js';
 
 const router = express.Router();
 
@@ -7,5 +7,7 @@ const router = express.Router();
 // sensible n'y transite : uniquement des coordonnées GPS de la course en cours.
 router.get('/map', renderTransportMap);
 router.get('/geocode', geocodeAddress);
+router.get('/autocomplete', autocompleteAddress);
+router.get('/place-details', placeDetails);
 
 export default router;
