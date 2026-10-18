@@ -236,6 +236,16 @@ export const recharge = async (req, res) => {
       }
       convertedAmount = chargeAmount;
       amount = chargeAmount / rate;
+
+      // Le modèle exige un montant EC >= 0.01 — sans ce contrôle, un montant
+      // CDF trop faible fait planter la création avec une erreur Sequelize
+      // brute (500) au lieu d'un message clair.
+      if (amount < 0.01) {
+        const minCdf = Math.ceil(0.01 * rate);
+        return res.status(400).json({
+          message: `Montant trop faible. Minimum : ${minCdf} FC (≈ 0.01 EC).`,
+        });
+      }
     }
 
     const isMobile = MOBILE_MONEY_PROVIDERS.has(String(PayTypeValue));
