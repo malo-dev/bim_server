@@ -379,12 +379,20 @@ const askPasswordReset = async (req, res) => {
   }
 };
 const resetPassword = async (req, res) => {
-  const { userId, newPassword } = req.body;
+  const { userId, otp, newPassword } = req.body;
   try {
     const user = await User.findOne({ where: { id: userId } });
 
     if (!user) {
       return res.status(400).json({ message: 'Utilisateur introuvable' });
+    }
+
+    // `resetPassword` ne vérifiait jamais le code OTP envoyé par
+    // `askPasswordReset` — n'importe qui connaissant un userId pouvait donc
+    // changer le mot de passe de n'importe quel compte. On exige maintenant
+    // le code reçu par e-mail, non expiré, avant toute réinitialisation.
+    if (!otp || !user.otp || user.otp !== String(otp) || !user.otpExpires || new Date(user.otpExpires) < new Date()) {
+      return res.status(400).json({ message: 'Code invalide ou expiré.' });
     }
 
     // Vérifier la limite de 2 réinitialisations par jour
@@ -409,6 +417,8 @@ const resetPassword = async (req, res) => {
       isActive: true,
       passwordResetCount: resetCount + 1,
       lastPasswordResetDate: new Date(),
+      otp: null,
+      otpExpires: null,
     });
 
     return res.status(200).json({ message: 'Mot de passe réinitialisé avec succès', userId: user.id });

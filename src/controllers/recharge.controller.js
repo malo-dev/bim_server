@@ -499,7 +499,8 @@ export const verifyPayment = async (req, res) => {
     }
 
     if (rechargeRecord.status === "success") {
-      return res.status(200).json({ message: "Transaction déjà créditée", status: "already_done" });
+      const existingUser = await User.findByPk(rechargeRecord.id);
+      return res.status(200).json({ message: "Transaction déjà créditée", status: "already_done", solde: existingUser?.soldNumber });
     }
 
     if (rechargeRecord.status === "failed") {
@@ -572,7 +573,7 @@ export const verifyPayment = async (req, res) => {
         reference,
       });
       sendConfirmationEmail(userItem, ownerItem, rawAmount, montantCredite);
-      return res.status(200).json({ message: "Compte crédité avec succès", status: "success", montantCredite, data: checkData });
+      return res.status(200).json({ message: "Compte crédité avec succès", status: "success", montantCredite, solde: userItem.soldNumber, data: checkData });
     }
 
     return res.status(200).json({ message: "Erreur lors du crédit", status: "error", data: checkData });
