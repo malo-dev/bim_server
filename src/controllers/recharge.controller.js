@@ -5,7 +5,7 @@ import { Op }    from 'sequelize';
 import { User, Notification, Transaction, History, TransactionRecharge, Currency } from '../models/index.js';
 import { generateSupportReceivedEmailTemplateRecharge } from '../utils/templateMails.util.js';
 import { generateReferenceRecharge } from '../utils/generateReferenceSecond.js';
-import { emitToUser } from '../services/socket.service.js';
+import { emitToUser, emitToAdmin } from '../services/socket.service.js';
 import { mailer } from '../utils/sendEmail.utils.js';
 import { notifyBimAdmins } from '../services/bimAdminNotify.service.js';
 import sequelize  from '../config/database.js';
@@ -443,6 +443,14 @@ export const flexpayCallback = async (req, res) => {
         "💰 Nouvelle recharge",
         `${userItem.username ?? "Un utilisateur"} a rechargé ${montantCredite} EC.`
       ).catch(() => {});
+      emitToAdmin('admin:activity', {
+        kind: 'recharge',
+        title: 'Recharge effectuée',
+        message: `${userItem.username ?? "Un utilisateur"} a rechargé ${montantCredite} EC.`,
+        amount: montantCredite,
+        reference,
+        createdAt: new Date().toISOString(),
+      });
     }
 
     return res.status(200).json({ message: "Callback traité — compte crédité" });

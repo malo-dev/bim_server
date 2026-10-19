@@ -63,6 +63,14 @@ export const createOrder = async (req, res) => {
       }
       // Notify admin room as well
       ioInstance.to('admin_room').emit('order:new', { orderNumber, companyId: companyId || null, userId, grandTotal });
+      ioInstance.to('admin_room').emit('admin:activity', {
+        kind: 'commande',
+        title: 'Nouvelle commande',
+        message: `Commande ${orderNumber} — ${grandTotal} EC.`,
+        amount: grandTotal,
+        reference: orderNumber,
+        createdAt: new Date().toISOString(),
+      });
     } catch {}
 
     // Push notification to the client confirming order received

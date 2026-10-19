@@ -1520,9 +1520,8 @@ export const createCommerceAccount = async (req, res) => {
       );
     }
 
-    const commerceData = { commercename: commerceName, commerceemail: commerceEmail };
+    const commerceData = { commerceName, commerceEmail };
     if (newUser) {
-      commerceData.id = newUser.id;
       commerceData.userId = newUser.id;
     }
 

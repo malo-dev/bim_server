@@ -7,6 +7,8 @@ import { generateSupportReceivedEmailTemplateRecharge } from '../utils/templateM
 import { generateReferenceRecharge } from '../utils/generateReferenceSecond.js';
 import { mailer } from '../utils/sendEmail.utils.js';
 import sequelize  from '../config/database.js';
+import { notifyBimAdmins } from '../services/bimAdminNotify.service.js';
+import { emitToAdmin } from '../services/socket.service.js';
 
 /* ─── CONFIG ────────────────────────────────────────────────────────── */
 const FRAIS_ABONNEMENT = 1;
@@ -228,6 +230,19 @@ export const recharge = async (req, res) => {
 
       /* ── 15. COMMIT ── */
       await t.commit();
+
+      notifyBimAdmins(
+        "💰 Nouvelle recharge",
+        `${userItem.username ?? "Un utilisateur"} a rechargé ${montantCredite} EC (MaxiCash).`
+      ).catch(() => {});
+      emitToAdmin('admin:activity', {
+        kind: 'recharge',
+        title: 'Recharge effectuée',
+        message: `${userItem.username ?? "Un utilisateur"} a rechargé ${montantCredite} EC (MaxiCash).`,
+        amount: montantCredite,
+        reference,
+        createdAt: new Date().toISOString(),
+      });
 
       /* ── 16. Réponse ── */
       res.status(200).json({
