@@ -22,8 +22,8 @@ export const getAllCommerces = async (req, res) => {
       whereClause[Op.and] = [
         {
           [Op.or]: [
-            { commercename: { [Op.like]: `%${search}%` } },
-            { commerceemail: { [Op.like]: `%${search}%` } },
+            { commerceName: { [Op.like]: `%${search}%` } },
+            { commerceEmail: { [Op.like]: `%${search}%` } },
           ],
         },
       ];
@@ -113,7 +113,9 @@ export const getCommerceById = async (req, res) => {
 
 export const createCommerce = async (req, res) => {
   try {
-    const { id: userId, commercename, commerceemail } = req.body;
+    const { id: userId, commercename, commerceemail, commerceName, commerceEmail } = req.body;
+    const name = commerceName ?? commercename;
+    const email = commerceEmail ?? commerceemail;
 
     if (!userId) {
       return res.status(409).json({
@@ -121,7 +123,7 @@ export const createCommerce = async (req, res) => {
       });
     }
 
-    if (!commercename || !commerceemail) {
+    if (!name || !email) {
       return res.status(409).json({
         message: 'Nom et email du commerce sont obligatoires',
       });
@@ -131,8 +133,8 @@ export const createCommerce = async (req, res) => {
 
     const commerceExist = await Commerce.findOne({
       where: {
-        commercename: commercename,
-        commerceemail: commerceemail,
+        commerceName: name,
+        commerceEmail: email,
       },
     });
 
@@ -143,9 +145,9 @@ export const createCommerce = async (req, res) => {
     }
 
     const commerceItem = await Commerce.create({
-      commercename: commercename,
-      commerceemail: commerceemail,
-      id: userId,
+      commerceName: name,
+      commerceEmail: email,
+      userId,
       imageUrl,
     });
 

@@ -11,7 +11,7 @@ import { mailer } from '../utils/sendEmail.utils.js';
 import jwt from "jsonwebtoken";
 import { generateReferenceRecharge } from '../utils/generateReferenceSecond.js';
 import { sendPushNotification } from '../services/pushNotification.service.js';
-import { emitToUser } from '../services/socket.service.js';
+import { emitToUser, getIO, emitToAdmin } from '../services/socket.service.js';
 import { notifyBimAdmins } from '../services/bimAdminNotify.service.js';
 /* ================= CONFIG RETRAIT ================= */
 
@@ -400,6 +400,14 @@ export const createRetrait = async (req, res) => {
       "💸 Retrait effectué",
       `${userSender.username ?? "Un utilisateur"} a retiré ${retraitAmount} EC.`
     ).catch(() => {});
+    emitToAdmin('admin:activity', {
+      kind: 'retrait',
+      title: 'Retrait effectué',
+      message: `${userSender.username ?? 'Un utilisateur'} a retiré ${retraitAmount} EC.`,
+      amount: retraitAmount,
+      reference: mainTransaction?.reference ?? null,
+      createdAt: new Date().toISOString(),
+    });
 
     return res.status(201).json({
       message: "Retrait effectué avec succès",
@@ -672,6 +680,17 @@ export const createTransfert = async (req, res) => {
     if (receiver.expoPushToken) {
       sendPushNotification(receiver.expoPushToken, pushReceiver.title, pushReceiver.message).catch(() => {});
     }
+    notifyBimAdmins(
+      "🔁 Transfert effectué",
+      `${sender.username ?? "Un utilisateur"} a transféré ${transferAmount} EC à ${receiver.username ?? "un autre utilisateur"}.`
+    ).catch(() => {});
+    emitToAdmin('admin:activity', {
+      kind: 'transfert',
+      title: 'Transfert effectué',
+      message: `${sender.username ?? 'Un utilisateur'} a transféré ${transferAmount} EC à ${receiver.username ?? 'un autre utilisateur'}.`,
+      amount: transferAmount,
+      createdAt: new Date().toISOString(),
+    });
 
     /* ── 14. Emails fire & forget (après commit + réponse) ── */
     try {
@@ -1169,6 +1188,18 @@ export const createPaiement = async (req, res) => {
     if (ownerItem.expoPushToken) {
       sendPushNotification(ownerItem.expoPushToken, pushPaiementOwner.title, pushPaiementOwner.message).catch(() => {});
     }
+    notifyBimAdmins(
+      "🛒 Paiement reçu",
+      `Commande ${orderNumber} — ${paiementAmount} EC payés par ${sender.username ?? "un utilisateur"}.`
+    ).catch(() => {});
+    emitToAdmin('admin:activity', {
+      kind: 'paiement',
+      title: 'Paiement reçu',
+      message: `Commande ${orderNumber} — ${paiementAmount} EC payés par ${sender.username ?? 'un utilisateur'}.`,
+      amount: paiementAmount,
+      reference: orderNumber,
+      createdAt: new Date().toISOString(),
+    });
 
     /* ── 12. Email fire & forget (après commit + réponse)
             Une lenteur SMTP ne bloque plus jamais le client ── */
@@ -1509,11 +1540,22 @@ export const createManualRecharge = async (req, res) => {
       status: 'pending',
     });
 
-    // Notifier l'admin via socket si disponible
+    // Notifier l'admin en temps réel (dashboard ouvert) + en push (téléphone)
     try {
-      const io = req.app.get('io');
-      if (io) io.to('admin_room').emit('new_recharge_request', { transaction, user: { id: user.id, username: user.username } });
+      getIO().to('admin_room').emit('new_recharge_request', { transaction, user: { id: user.id, username: user.username } });
     } catch (_) {}
+    notifyBimAdmins(
+      "🆕 Demande de recharge",
+      `${user.username ?? "Un utilisateur"} demande une recharge de ${parsedAmount} EC (${method || 'Manuel'}).`
+    ).catch(() => {});
+    emitToAdmin('admin:activity', {
+      kind: 'recharge',
+      title: 'Demande de recharge',
+      message: `${user.username ?? 'Un utilisateur'} demande une recharge de ${parsedAmount} EC (${method || 'Manuel'}).`,
+      amount: parsedAmount,
+      reference,
+      createdAt: new Date().toISOString(),
+    });
 
     return res.status(201).json({
       message: 'Demande de recharge enregistrée. Notre équipe vous contactera.',

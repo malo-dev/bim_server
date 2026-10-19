@@ -116,6 +116,13 @@ export const emitToUser = (userId, event, data) => {
   }
 };
 
+// Émet un événement temps réel à tous les admins connectés au dashboard (admin_room)
+export const emitToAdmin = (event, data) => {
+  if (io) {
+    io.to('admin_room').emit(event, data);
+  }
+};
+
 export const getOnlineUsers = () => Array.from(onlineUsers.values());
 
 // Émet un changement de statut de commande à tous ceux qui la suivent

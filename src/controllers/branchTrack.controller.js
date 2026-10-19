@@ -118,12 +118,12 @@ export const getBranchTrackById = async (req, res) => {
 
 export const createBranchTrack = async (req, res) => {
   try {
-    const { branchTrackname, branchTrackemail, commerceId } = req.body;
+    const { branchTrackname, branchTrackemail, branchTrackName, branchTrackEmail, commerceId } = req.body;
     const imageUrl = req.file ? `/images/${req.file.filename}` : null;
 
     const BranchTrackItems = await BranchTrack.create({
-      branchTrackname: branchTrackname,
-       branchTrackemail : branchTrackemail,
+      branchTrackName: branchTrackName ?? branchTrackname,
+      branchTrackEmail: branchTrackEmail ?? branchTrackemail,
       commerceId,
       imageUrl,
     });
