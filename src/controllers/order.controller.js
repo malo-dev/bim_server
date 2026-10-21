@@ -354,7 +354,7 @@ export const getOrders = async (req, res) => {
     }
 
     const include = [
-      { model: User, as: "user", attributes: ["id", "username", "email"] },
+      { model: User, as: "user", attributes: ["id", "username", "email", "telephone"] },
       { model: Company, as: "company", attributes: ["companyId", "name"] },
       { model: Product, as: "product", attributes: ["productId", "name", "price"],
         include: [{ model: Currency, as: "currency", attributes: ["code", "symbol"] }] },
@@ -386,7 +386,7 @@ export const getOrderById = async (req, res) => {
   try {
     const order = await Order.findByPk(req.params.id, {
       include: [
-        { model: User, as: "user", attributes: ["id", "username", "email"] },
+        { model: User, as: "user", attributes: ["id", "username", "email", "telephone"] },
         { model: Company, as: "company", attributes: ["companyId", "name"] },
         { model: Product, as: "product", attributes: ["productId", "name", "price"],
           include: [{ model: Currency, as: "currency", attributes: ["code", "symbol"] }] },
