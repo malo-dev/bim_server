@@ -1,12 +1,13 @@
 /* eslint-disable no-undef */
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { User, Role, BranchTrack, Commerce, Company, BusinessCategory, Order, Transaction, UserSOS, TransactionRecharge } from '../models/index.js';
+import { User, Role, BranchTrack, Commerce, Company, BusinessCategory, Order, Transaction, UserSOS, TransactionRecharge, Chauffeur } from '../models/index.js';
 import sequelize from '../config/database.js';
 import { Op } from 'sequelize';
 import crypto from 'crypto';
 import { mailer, sendEmail } from '../utils/sendEmail.utils.js';
-import { emitSOSAlert } from '../services/socket.service.js';
+import { emitSOSAlert, emitToUser } from '../services/socket.service.js';
+import { sendPushNotification } from '../services/pushNotification.service.js';
 import path from 'path';
 import fs from 'fs';
 import { generateNewLoginAlertEmailTemplate,generateTransactionPasswordEmailTemplate, generateOtpEmailTemplate, generateOtpEmailTemplateActivated } from '../utils/templateMails.util.js';
@@ -97,6 +98,17 @@ const quickAccess = async (req, res) => {
       });
     }
 
+    // Écran "Nouveau compte" : un `password` n'est envoyé que depuis ce
+    // chemin (voir SecurityPasswordStep côté app) — si ce numéro appartient
+    // déjà à quelqu'un, on refuse plutôt que de connecter silencieusement
+    // cette personne au compte existant d'un autre (le mot de passe choisi
+    // ne serait alors même jamais pris en compte).
+    if (user && password) {
+      return res.status(409).json({
+        message: "Ce numéro est déjà associé à un autre compte. Connectez-vous avec « Déjà client » ou utilisez un autre numéro.",
+      });
+    }
+
     if (!user) {
       let created = false;
       let attempts = 0;
@@ -141,6 +153,26 @@ const quickAccess = async (req, res) => {
       });
     }
 
+    // Ce compte était déjà connecté ailleurs (refreshToken jamais effacé par
+    // une déconnexion) — on autorise tout de même cette nouvelle connexion
+    // (comptes "rapides" = plusieurs appareils légitimes dans la durée), mais
+    // on alerte l'appareil déjà connecté : push (toujours) + socket (s'il est
+    // ouvert en ce moment) avec un bouton "ce n'est pas moi" côté app.
+    if (!isNewAccount && user.refreshToken) {
+      emitToUser(user.id, 'auth:new_device_login', {
+        deviceModel: deviceModel || null,
+        deviceBrand: deviceBrand || null,
+        at: new Date().toISOString(),
+      });
+      if (user.expoPushToken) {
+        sendPushNotification(
+          user.expoPushToken,
+          '⚠️ Nouvelle connexion détectée',
+          "Votre compte BIM NEXT vient d'être utilisé depuis un autre appareil. Si ce n'est pas vous, ouvrez l'app pour sécuriser votre compte."
+        ).catch(() => {});
+      }
+    }
+
     const payload = { userId: user.id, email: user.email };
     let token, refreshToken;
     if (user.isQuickAccount) {
@@ -165,6 +197,11 @@ const quickAccess = async (req, res) => {
       notifyBimAdmins('🆕 Nouveau compte', `Un nouvel utilisateur vient de s'inscrire (${user.username}).`).catch(() => {});
     }
 
+    // Un chauffeur garde son compte client normal (même téléphone) — on
+    // signale ici qu'un profil chauffeur existe pour que l'app redirige
+    // directement vers l'Espace Chauffeur au lieu de l'accueil classique.
+    const chauffeur = isNewAccount ? null : await Chauffeur.findOne({ where: { userId: user.id } });
+
     return res.status(200).json({
       message: isNewAccount ? 'Compte créé avec succès' : 'Compte retrouvé avec succès',
       token,
@@ -172,6 +209,8 @@ const quickAccess = async (req, res) => {
       userId: user.id,
       isNewAccount,
       isQuickAccount: user.isQuickAccount,
+      isChauffeur: !!chauffeur,
+      chauffeurStatus: chauffeur?.status ?? null,
     });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur', error: error.message });
@@ -750,6 +789,29 @@ const updateUserPassword = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+// ── Réaction à une alerte "nouvelle connexion détectée" ("ce n'est pas moi")
+// — pas d'ancien mot de passe demandé : l'appareil appelant est déjà
+// authentifié (token valide), ce qui suffit à prouver qu'il s'agit bien du
+// propriétaire légitime réagissant à l'alerte, pas de l'intrus.
+const secureMyAccount = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { newPassword } = req.body;
+    if (!newPassword || String(newPassword).trim().length < 4) {
+      return res.status(400).json({ message: 'Le nouveau mot de passe doit contenir au moins 4 caractères.' });
+    }
+    const user = await User.findByPk(userId);
+    if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
+
+    const hashedPassword = await bcrypt.hash(String(newPassword).trim(), 10);
+    await user.update({ password: hashedPassword });
+
+    return res.status(200).json({ message: 'Mot de passe mis à jour — votre compte est sécurisé.' });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
 const desactivateUser = async (req, res) => {
   const { id } = req.params;
   try {
@@ -2068,6 +2130,7 @@ export {
   getUserById,
   updateUserProfile,
   updateUserPassword,
+  secureMyAccount,
   desactivateUser,
   deleteUser,
   deleteAccount,
