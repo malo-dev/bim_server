@@ -10,6 +10,7 @@ import {
   updateUser,
   getUserById,
   updateUserPassword,
+  secureMyAccount,
   deleteUser,
   deleteAccount,
   refreshToken,
@@ -67,6 +68,7 @@ router.put('/users/:id/activate', authMiddleware, requireBimAdmin, desactivateUs
 router.put('/users/:id/block-user', authMiddleware, requireBimAdmin, blockUser);
 router.put('/users/:id/profile', authMiddleware, upload.single('image'), updateUser);
 router.put('/users/:id/password', authMiddleware, updateUserPassword);
+router.post('/secure-my-account', authMiddleware, secureMyAccount);
 router.delete('/users/:id', authMiddleware, requireBimAdmin, deleteUser);
 router.get('/users/:id/transaction-password', authMiddleware, getTransactionPassword);
 router.post('/users/:id/admin-recharge', authMiddleware, requireBimAdmin, adminRechargeUser);
