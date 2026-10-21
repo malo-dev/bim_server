@@ -14,6 +14,9 @@ export const createOrder = async (req, res) => {
 
     if (!items || !Array.isArray(items) || items.length === 0)
       return res.status(400).json({ message: "Le panier est vide" });
+    if (!shippingAddress || !clientPhone) {
+      return res.status(400).json({ message: "L'adresse de livraison et le numéro de téléphone sont obligatoires" });
+    }
     // companyId est optionnel : une commande de "produits aléatoires"
     // (non rattachés à une entreprise) n'a pas de companyId.
 
