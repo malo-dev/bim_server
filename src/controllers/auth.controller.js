@@ -71,7 +71,7 @@ const generateQuickUsername = () => `quick_${crypto.randomBytes(3).toString('hex
 const generateQuickEmail = () => `quick_${crypto.randomBytes(8).toString('hex')}@bimreseau.com`;
 
 const quickAccess = async (req, res) => {
-  const { telephone, password, deviceModel, deviceBrand } = req.body;
+  const { telephone, password, deviceModel, deviceBrand, mustExist } = req.body;
   const cleanPhone = telephone ? String(telephone).trim() : null;
   // IP du client — derrière un proxy/load balancer, x-forwarded-for porte la
   // vraie IP d'origine (la première de la liste), sinon req.ip suffit.
@@ -87,6 +87,15 @@ const quickAccess = async (req, res) => {
       ? await User.findOne({ where: { telephone: cleanPhone }, order: [['updatedAt', 'DESC']] })
       : null;
     let isNewAccount = false;
+
+    // Écran "Déjà client" de l'app : on ne doit jamais créer un compte
+    // fantôme si l'utilisateur s'est trompé de numéro — on le signale
+    // clairement plutôt que de créer silencieusement un nouveau compte vide.
+    if (!user && mustExist) {
+      return res.status(404).json({
+        message: "Ce numéro est introuvable. Vérifiez le numéro ou créez un nouveau compte.",
+      });
+    }
 
     if (!user) {
       let created = false;

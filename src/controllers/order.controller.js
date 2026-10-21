@@ -3,7 +3,7 @@ import { Order, User, Company, Product, Currency, TransactionPaiement, Transacti
 import sequelize from "../config/database.js";
 import { getDateRangeByPeriod } from "../utils/getDateRangeByPeriod.util.js";
 import { parseLocalDayStart, parseLocalDayEnd } from "../utils/dateRange.util.js";
-import { emitOrderUpdate, emitToUser } from "../services/socket.service.js";
+import { emitOrderUpdate, emitToUser, emitToAdmin } from "../services/socket.service.js";
 import { recordConsumptionAndMaybeGrantBonus } from "../services/loyalty.service.js";
 import { notifyBimAdmins } from "../services/bimAdminNotify.service.js";
 
@@ -158,17 +158,33 @@ export const getUserOrders = async (req, res) => {
   }
 };
 
+// Le livreur confirme avoir reçu l'argent en espèces à la remise de la
+// commande — on règle la commande directement (livrée + payée) SANS jamais
+// toucher au solde EC du client : ce paiement n'est jamais passé par le
+// portefeuille, c'est de l'argent physique donné en main au livreur.
 export const markOrderPaidOnDelivery = async (req, res) => {
   try {
-    const userId      = req.user?.id;
+    const livreurUserId = req.user?.id;
     const { orderNumber } = req.params;
 
+    const livreur = await Livreur.findOne({ where: { userId: livreurUserId, status: 'active' } });
+    if (!livreur) {
+      return res.status(403).json({ message: 'Profil livreur actif requis' });
+    }
+
     const [count] = await Order.update(
-      { status: "delivered", paymentStatus: "paid" },
-      { where: { orderNumber, userId } }
+      { status: "delivered", paymentStatus: "paid", paymentMethod: "cash" },
+      { where: { orderNumber, livreurId: livreur.livreurId } }
     );
 
-    if (!count) return res.status(404).json({ message: "Commande introuvable ou déjà traitée" });
+    if (!count) return res.status(404).json({ message: "Commande introuvable, déjà traitée, ou qui ne vous est pas assignée" });
+
+    const orderRows = await Order.findAll({
+      where: { orderNumber },
+      include: [{ model: User, as: 'user', attributes: ['id', 'username'] }],
+    });
+    const totalAmount = parseFloat(orderRows.reduce((s, o) => s + parseFloat(o.totalAmount), 0).toFixed(2));
+    const clientName = orderRows[0]?.user?.username ?? 'Un client';
 
     emitOrderUpdate(orderNumber, {
       orderNumber,
@@ -177,7 +193,20 @@ export const markOrderPaidOnDelivery = async (req, res) => {
       updatedAt: new Date().toISOString(),
     });
 
-    return res.json({ message: "Commande marquée livrée et payée", orderNumber });
+    notifyBimAdmins(
+      "💵 Commande payée cash",
+      `Commande ${orderNumber} — ${totalAmount} EC payés en espèces par ${clientName} au livreur.`
+    ).catch(() => {});
+    emitToAdmin('admin:activity', {
+      kind: 'commande',
+      title: 'Commande payée cash',
+      message: `Commande ${orderNumber} — ${totalAmount} EC payés en espèces par ${clientName}.`,
+      amount: totalAmount,
+      reference: orderNumber,
+      createdAt: new Date().toISOString(),
+    });
+
+    return res.json({ message: "Commande marquée livrée et payée (espèces)", orderNumber, amount: totalAmount });
   } catch (error) {
     res.status(500).json({ message: "Erreur serveur", error: error.message });
   }
@@ -285,6 +314,7 @@ export const getOrders = async (req, res) => {
       companyId,
       productId,
       status,
+      paymentMethod,
       startDate,
       endDate,
       search,
@@ -303,6 +333,7 @@ export const getOrders = async (req, res) => {
     if (companyId) where.companyId = companyId;
     if (productId) where.productId = productId;
     if (status) where.status = status;
+    if (paymentMethod) where.paymentMethod = paymentMethod;
 
     if (startDate || endDate) {
       // `new Date("YYYY-MM-DD")` parse en UTC — avec startDate === endDate
