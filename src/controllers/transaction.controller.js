@@ -1006,6 +1006,7 @@ export const createPaiement = async (req, res) => {
       companyId,
       productId,
       shippingAddress,
+      clientPhone,
       notes,
       paymentMethod,
     } = req.body;
@@ -1016,6 +1017,10 @@ export const createPaiement = async (req, res) => {
     if (!id || !paiementAmount || !companyId || !productId) {
       await t.rollback();
       return res.status(400).json({ message: "Tous les champs obligatoires sont requis" });
+    }
+    if (!shippingAddress || !clientPhone) {
+      await t.rollback();
+      return res.status(400).json({ message: "L'adresse de livraison et le numéro de téléphone sont obligatoires" });
     }
     if (paiementAmount <= 0) {
       await t.rollback();
@@ -1073,6 +1078,7 @@ export const createPaiement = async (req, res) => {
         status:          "paid",
         paymentMethod,
         shippingAddress,
+        clientPhone,
         notes,
       },
       { transaction: t }
