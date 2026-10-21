@@ -18,15 +18,16 @@ module.exports = {
       );
     `);
 
-    // Seed avec les tarifs qui étaient codés en dur dans ride.controller.js,
-    // pour que rien ne change au moment du déploiement de cette migration.
+    // Grille tarifaire : 1 km = 1 EC pour toutes les gammes, aucun frais de
+    // prise en charge fixe (cf. migration 20261021000001 pour les bases déjà
+    // déployées avant cette simplification).
     await queryInterface.sequelize.query(`
       INSERT IGNORE INTO ride_tiers (tierKey, label, base, perKm, seats, etaMin, active, sortOrder, createdAt, updatedAt) VALUES
-        ('eco',     'Bim Eco',      3.00, 1.75, 4, 3, 1, 1, NOW(), NOW()),
-        ('confort', 'Bim Confort',  5.00, 2.60, 4, 5, 1, 2, NOW(), NOW()),
-        ('green',   'Bim Green',    3.50, 2.00, 4, 4, 1, 3, NOW(), NOW()),
-        ('van',     'Bim Van',      8.00, 3.30, 6, 8, 1, 4, NOW(), NOW()),
-        ('moto',    'Moto Express', 2.00, 1.20, 1, 3, 1, 5, NOW(), NOW());
+        ('eco',     'Bim Eco',      0, 1.00, 4, 3, 1, 1, NOW(), NOW()),
+        ('confort', 'Bim Confort',  0, 1.00, 4, 5, 1, 2, NOW(), NOW()),
+        ('green',   'Bim Green',    0, 1.00, 4, 4, 1, 3, NOW(), NOW()),
+        ('van',     'Bim Van',      0, 1.00, 6, 8, 1, 4, NOW(), NOW()),
+        ('moto',    'Moto Express', 0, 1.00, 1, 3, 1, 5, NOW(), NOW());
     `);
   },
   async down(queryInterface) {

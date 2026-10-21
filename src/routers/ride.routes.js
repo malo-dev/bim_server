@@ -16,6 +16,8 @@ import {
   getAllRidesAdmin,
   adminAssignChauffeur,
   getAvailableChauffeursAdmin,
+  getAvailableChauffeurs,
+  offerRideToChauffeur,
 } from '../controllers/ride.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 
@@ -25,6 +27,10 @@ router.post('/estimate', authMiddleware, estimateRide);
 router.post('/request', authMiddleware, requestRide);
 router.get('/history', authMiddleware, getUserRides);
 router.get('/chauffeur/active', authMiddleware, getChauffeurActiveRide);
+
+// ── Le passager choisit lui-même son chauffeur ──
+router.get('/:rideNumber/chauffeurs', authMiddleware, getAvailableChauffeurs);
+router.post('/:rideNumber/offer/:chauffeurId', authMiddleware, offerRideToChauffeur);
 
 // ── Admin (admin-bim) ──
 router.get('/admin/all', authMiddleware, getAllRidesAdmin);

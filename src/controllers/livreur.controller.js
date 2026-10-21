@@ -605,6 +605,7 @@ export const getMyDeliveries = async (req, res) => {
         grouped[d.orderNumber] = {
           orderNumber: d.orderNumber, status: d.status, createdAt: d.createdAt,
           shippingAddress: d.shippingAddress, clientPhone: d.clientPhone,
+          paymentStatus: d.paymentStatus, paymentMethod: d.paymentMethod,
           user: d.user, company: d.company,
           commissionRate: parseFloat(d.company?.commissionRate ?? 10),
           items: [], grandTotal: 0,
