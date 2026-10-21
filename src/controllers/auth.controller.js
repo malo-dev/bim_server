@@ -71,7 +71,7 @@ const generateQuickUsername = () => `quick_${crypto.randomBytes(3).toString('hex
 const generateQuickEmail = () => `quick_${crypto.randomBytes(8).toString('hex')}@bimreseau.com`;
 
 const quickAccess = async (req, res) => {
-  const { telephone, deviceModel, deviceBrand } = req.body;
+  const { telephone, password, deviceModel, deviceBrand } = req.body;
   const cleanPhone = telephone ? String(telephone).trim() : null;
   // IP du client — derrière un proxy/load balancer, x-forwarded-for porte la
   // vraie IP d'origine (la première de la liste), sinon req.ip suffit.
@@ -94,8 +94,13 @@ const quickAccess = async (req, res) => {
       while (!created && attempts < 5) {
         attempts++;
         try {
-          const randomPwd = crypto.randomBytes(24).toString('hex');
-          const hashedPassword = await bcrypt.hash(randomPwd, 10);
+          // Mot de passe de sécurité choisi par l'utilisateur à l'inscription
+          // (nouvel écran d'onboarding) ; à défaut (anciens appels), un mot
+          // de passe aléatoire que l'utilisateur ne verra jamais.
+          const rawPassword = password && String(password).trim().length >= 4
+            ? String(password).trim()
+            : crypto.randomBytes(24).toString('hex');
+          const hashedPassword = await bcrypt.hash(rawPassword, 10);
           user = await User.create({
             username: generateQuickUsername(),
             email: generateQuickEmail(),
