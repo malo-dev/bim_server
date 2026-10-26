@@ -79,13 +79,17 @@ export const recharge = async (req, res) => {
       });
     }
 
-    /* ── 4. Calcul montant MaxiCash ── */
+    /* ── 4. Calcul montant MaxiCash ──
+       `rechargeAmount` n'existe que pour parler à l'API MaxiCash (unité attendue
+       différente de l'EC) — l'enregistrement interne doit garder le vrai
+       montant EC (`amount`), jamais cette valeur ×10 (sinon l'historique/le
+       solde affichent un montant de recharge faux, 10x trop élevé). ── */
     const rechargeAmount = Math.round(amount * 10);
     const reference      = generateReferenceRecharge();
 
     /* ── 5. Créer TransactionRecharge en attente ── */
     rechargeRecord = await TransactionRecharge.create({
-      amount:    rechargeAmount,
+      amount:    amount,
       telephone,
       reference,
       id:        userId,
