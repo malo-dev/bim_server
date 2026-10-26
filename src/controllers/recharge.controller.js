@@ -385,41 +385,64 @@ export const flexpayCallback = async (req, res) => {
 
     console.log("📩 [flexpayCallback] Body reçu :", JSON.stringify(req.body, null, 2));
 
-    const rechargeRecord = await TransactionRecharge.findOne({
-      where: { reference, status: "pending" },
-    });
+    /* ── Verrou anti-doublon ──────────────────────────────────────────────
+       FlexPay peut renvoyer plusieurs fois le même callback en quelques
+       millisecondes (retry réseau). Sans verrou, plusieurs requêtes
+       concurrentes lisaient TOUTES la ligne encore "pending" avant que la
+       première n'ait eu le temps de la marquer "success" — chacune créditait
+       alors le compte séparément (un seul paiement de 117 EC crédité 5 fois
+       d'affilée dans un cas réel). `SELECT ... FOR UPDATE` sérialise les
+       requêtes concurrentes sur cette même ligne : la 2e n'avance qu'une
+       fois la 1re committée, et retrouve alors le statut déjà "success". ── */
+    const lockTx = await sequelize.transaction();
+    let rechargeRecord;
+    try {
+      rechargeRecord = await TransactionRecharge.findOne({
+        where: { reference },
+        transaction: lockTx,
+        lock: lockTx.LOCK.UPDATE,
+      });
 
-    if (!rechargeRecord) {
-      console.log("⚠️  [flexpayCallback] Transaction non trouvée ou déjà traitée — ref:", reference);
-      return res.status(200).json({ message: "Transaction non trouvée ou déjà traitée" });
+      if (!rechargeRecord || rechargeRecord.status !== "pending") {
+        await lockTx.commit();
+        console.log("⚠️  [flexpayCallback] Transaction non trouvée ou déjà traitée — ref:", reference);
+        return res.status(200).json({ message: "Transaction non trouvée ou déjà traitée" });
+      }
+
+      /* ── Callback dit annulation/échec (user a appuyé Annuler sur son tel) ── */
+      if (String(code) !== "0") {
+        await rechargeRecord.update({ status: "failed" }, { transaction: lockTx });
+        await lockTx.commit();
+        console.log(`❌ [flexpayCallback] Annulé/Échec — code: ${code} — ref: ${reference}`);
+        try {
+          await Notification.create({
+            title: "Recharge annulée ",
+            message: "Vous avez annulé la recharge. Aucun montant n'a été débité.",
+            type: "ERREUR", userId: rechargeRecord.id,
+          });
+        } catch (e) { console.error(e.message); }
+        try {
+          await History.create({
+            type: "Recharge", amount: rechargeRecord.amount || 0, status: "échoué",
+            description: "Recharge annulée par l'utilisateur",
+            action: "Recharge EC ❌", userId: rechargeRecord.id,
+          });
+        } catch (e) { console.error(e.message); }
+        emitToUser(rechargeRecord.id, "recharge:cancelled", { reference });
+        console.log(`📤 [flexpayCallback] Socket "recharge:cancelled" émis → userId: ${rechargeRecord.id}`);
+        return res.status(200).json({ message: "Callback reçu — recharge annulée" });
+      }
+
+      /* ── Callback code=0 → FlexPay confirme le paiement → on marque le
+         succès ET on relâche le verrou avant de créditer (créditBim ouvre
+         sa propre transaction ; pas besoin de garder ce verrou pendant). ── */
+      await rechargeRecord.update({ status: "success" }, { transaction: lockTx });
+      await lockTx.commit();
+      console.log(`✅ [flexpayCallback] Succès confirmé — code: ${code} — ref: ${reference}`);
+    } catch (lockErr) {
+      await lockTx.rollback();
+      throw lockErr;
     }
-
-    /* ── Callback dit annulation/échec (user a appuyé Annuler sur son tel) ── */
-    if (String(code) !== "0") {
-      console.log(`❌ [flexpayCallback] Annulé/Échec — code: ${code} — ref: ${reference}`);
-      await rechargeRecord.update({ status: "failed" });
-      try {
-        await Notification.create({
-          title: "Recharge annulée ",
-          message: "Vous avez annulé la recharge. Aucun montant n'a été débité.",
-          type: "ERREUR", userId: rechargeRecord.id,
-        });
-      } catch (e) { console.error(e.message); }
-      try {
-        await History.create({
-          type: "Recharge", amount: rechargeRecord.amount || 0, status: "échoué",
-          description: "Recharge annulée par l'utilisateur",
-          action: "Recharge EC ❌", userId: rechargeRecord.id,
-        });
-      } catch (e) { console.error(e.message); }
-      emitToUser(rechargeRecord.id, "recharge:cancelled", { reference });
-      console.log(`📤 [flexpayCallback] Socket "recharge:cancelled" émis → userId: ${rechargeRecord.id}`);
-      return res.status(200).json({ message: "Callback reçu — recharge annulée" });
-    }
-
-    /* ── Callback code=0 → FlexPay confirme le paiement → on crédite directement ── */
-    console.log(`✅ [flexpayCallback] Succès confirmé — code: ${code} — ref: ${reference}`);
-    await rechargeRecord.update({ status: "success" });
 
     const rawAmount = Number(rechargeRecord.amount);
 
@@ -594,9 +617,31 @@ export const verifyPayment = async (req, res) => {
       return res.status(200).json({ message: "Paiement pas encore confirmé", status: "pending", data: checkData });
     }
 
-    /* Paiement confirmé → on crédite */
-    await rechargeRecord.update({ status: "success" });
-    const rawAmount = Number(rechargeRecord.amount);
+    /* Paiement confirmé → on crédite, avec le même verrou anti-doublon que
+       flexpayCallback (un double-tap sur "Vérifier", ou une course avec le
+       callback FlexPay qui arrive au même moment, pourraient sinon créditer
+       deux fois la même recharge). ── */
+    const verifyLockTx = await sequelize.transaction();
+    let lockedRecord;
+    try {
+      lockedRecord = await TransactionRecharge.findOne({
+        where: { reference },
+        transaction: verifyLockTx,
+        lock: verifyLockTx.LOCK.UPDATE,
+      });
+      if (!lockedRecord || lockedRecord.status !== "pending") {
+        await verifyLockTx.commit();
+        const existingUser = await User.findByPk(rechargeRecord.id);
+        return res.status(200).json({ message: "Transaction déjà traitée", status: "already_done", solde: existingUser?.soldNumber });
+      }
+      await lockedRecord.update({ status: "success" }, { transaction: verifyLockTx });
+      await verifyLockTx.commit();
+    } catch (lockErr) {
+      await verifyLockTx.rollback();
+      throw lockErr;
+    }
+
+    const rawAmount = Number(lockedRecord.amount);
 
     let creditResult;
     try {
