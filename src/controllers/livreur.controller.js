@@ -4,6 +4,7 @@ import { Livreur, LivreurRating, LivreurSOS, User, Company, Order, Product } fro
 import sequelize from '../config/database.js';
 import { sendEmail } from '../utils/sendEmail.utils.js';
 import { emitToUser, getIO, emitOrderUpdate, emitSOSAlert } from '../services/socket.service.js';
+import { pushToUser } from '../services/pushNotification.service.js';
 import { Op } from 'sequelize';
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -317,6 +318,8 @@ export const updateLivreurStatus = async (req, res) => {
         body: notif.msg.replace(/<[^>]*>/g, ''),
         type: 'livreur',
       });
+      // Jamais de mot de passe dans un push (visible sur l'écran verrouillé).
+      pushToUser(user.id, notif.subject, status === 'active' ? 'Votre mot de passe livreur vous a été envoyé par e-mail.' : notif.msg.replace(/<[^>]*>/g, '')).catch(() => {});
     }
 
     return res.json({ message: 'Statut mis à jour', livreur });
@@ -529,11 +532,14 @@ export const acceptOrder = async (req, res) => {
     });
 
     if (firstOrder?.userId) {
+      const assignedBody = `${firstOrder.livreur?.user?.username ?? 'Un livreur'} a accepté votre commande ${orderNumber} et est en route !`;
       emitToUser(firstOrder.userId, 'notification', {
         title: 'Livreur assigné 🚴',
-        body: `${firstOrder.livreur?.user?.username ?? 'Un livreur'} a accepté votre commande et est en route !`,
+        body: assignedBody,
         type: 'order',
       });
+      emitToUser(String(firstOrder.userId), 'order:status_updated', { orderNumber, status: 'confirmed' });
+      pushToUser(firstOrder.userId, '🚴 Livreur assigné', assignedBody, { orderNumber }).catch(() => {});
     }
 
     return res.json({ message: 'Commande acceptée', livreurId: livreur.livreurId });
@@ -867,6 +873,7 @@ export const adminUpdateLivreurStatus = async (req, res) => {
         html: `<h2 style="color:#0353CC">${notif.subject}</h2><p>Bonjour <strong>${user.username}</strong>,</p><p>${notif.msg}</p><br/><p style="color:#888">— L'équipe BIM NEXT</p>`,
       });
       emitToUser(String(user.id), 'notification', { title: notif.subject, body: notif.msg.replace(/<[^>]*>/g, ''), type: 'livreur' });
+      pushToUser(user.id, notif.subject, status === 'active' ? 'Votre mot de passe livreur vous a été envoyé par e-mail.' : notif.msg.replace(/<[^>]*>/g, '')).catch(() => {});
     }
 
     return res.json({ message: 'Statut mis à jour', livreur, plainPassword: plainPassword ?? undefined });

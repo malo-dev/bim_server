@@ -1,13 +1,13 @@
 /* eslint-disable no-undef */
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { User, Role, BranchTrack, Commerce, Company, BusinessCategory, Order, Transaction, UserSOS, TransactionRecharge, Chauffeur } from '../models/index.js';
+import { User, Role, BranchTrack, Commerce, Company, BusinessCategory, Order, Transaction, UserSOS, TransactionRecharge, Chauffeur, Livreur } from '../models/index.js';
 import sequelize from '../config/database.js';
 import { Op } from 'sequelize';
 import crypto from 'crypto';
 import { mailer, sendEmail } from '../utils/sendEmail.utils.js';
 import { emitSOSAlert, emitToUser } from '../services/socket.service.js';
-import { sendPushNotification } from '../services/pushNotification.service.js';
+import { sendPushNotification, claimPushToken } from '../services/pushNotification.service.js';
 import path from 'path';
 import fs from 'fs';
 import { generateNewLoginAlertEmailTemplate,generateTransactionPasswordEmailTemplate, generateOtpEmailTemplate, generateOtpEmailTemplateActivated } from '../utils/templateMails.util.js';
@@ -17,6 +17,7 @@ import { getDateRangeByPeriod } from '../utils/getDateRangeByPeriod.util.js';
 import { parseLocalDayStart, parseLocalDayEnd } from '../utils/dateRange.util.js';
 import { creditBim, OWNER_EMAIL } from './recharge.controller.js';
 import { notifyBimAdmins } from '../services/bimAdminNotify.service.js';
+import { isBimAdminUserId } from '../utils/bimAdmin.util.js';
 const generateOtp = () => {
   return Math.floor(100000 + Math.random() * 900000).toString(); // OTP 6 chiffres
 };
@@ -72,8 +73,15 @@ const generateQuickUsername = () => `quick_${crypto.randomBytes(3).toString('hex
 const generateQuickEmail = () => `quick_${crypto.randomBytes(8).toString('hex')}@bimreseau.com`;
 
 const quickAccess = async (req, res) => {
-  const { telephone, password, deviceModel, deviceBrand, mustExist } = req.body;
+  const { telephone, password, deviceModel, deviceBrand, mustExist, fullName, email } = req.body;
   const cleanPhone = telephone ? String(telephone).trim() : null;
+  // Nouveau parcours d'inscription (design BIM NEXT) : nom complet + e-mail
+  // facultatifs, saisis à l'étape « Complète ton profil ».
+  const cleanName = fullName ? String(fullName).trim().slice(0, 100) : null;
+  const cleanEmail = email ? String(email).trim().toLowerCase() : null;
+  if (cleanEmail && !/^\S+@\S+\.\S+$/.test(cleanEmail)) {
+    return res.status(400).json({ message: "Cette adresse e-mail n'est pas valide." });
+  }
   // IP du client — derrière un proxy/load balancer, x-forwarded-for porte la
   // vraie IP d'origine (la première de la liste), sinon req.ip suffit.
   const requestIp = (req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.ip || null;
@@ -109,6 +117,15 @@ const quickAccess = async (req, res) => {
       });
     }
 
+    if (!user && cleanEmail) {
+      const emailTaken = await User.findOne({ where: { email: cleanEmail } });
+      if (emailTaken) {
+        return res.status(409).json({
+          message: "Cette adresse e-mail est déjà utilisée par un autre compte.",
+        });
+      }
+    }
+
     if (!user) {
       let created = false;
       let attempts = 0;
@@ -118,13 +135,20 @@ const quickAccess = async (req, res) => {
           // Mot de passe de sécurité choisi par l'utilisateur à l'inscription
           // (nouvel écran d'onboarding) ; à défaut (anciens appels), un mot
           // de passe aléatoire que l'utilisateur ne verra jamais.
-          const rawPassword = password && String(password).trim().length >= 4
+          const chosenPassword = !!(password && String(password).trim().length >= 4);
+          const rawPassword = chosenPassword
             ? String(password).trim()
             : crypto.randomBytes(24).toString('hex');
           const hashedPassword = await bcrypt.hash(rawPassword, 10);
           user = await User.create({
-            username: generateQuickUsername(),
-            email: generateQuickEmail(),
+            username: cleanName || generateQuickUsername(),
+            fullname: cleanName || null,
+            passwordSetByUser: chosenPassword,
+            // Un e-mail réel n'est utilisé qu'au premier essai : en cas de
+            // collision (course entre deux inscriptions) on retombe sur un
+            // e-mail synthétique plutôt que d'échouer.
+            email: (cleanEmail && attempts === 1) ? cleanEmail : generateQuickEmail(),
+            notificationEmail: cleanEmail || null,
             password: hashedPassword,
             telephone: cleanPhone,
             isActive: true,
@@ -181,7 +205,7 @@ const quickAccess = async (req, res) => {
       token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '180d' });
     } else {
       // Compte traditionnel retrouvé via son téléphone : session identique à /auth/login.
-      refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
+      refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, { expiresIn: '3650d' });
       token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '2h' });
     }
 
@@ -212,6 +236,172 @@ const quickAccess = async (req, res) => {
       isChauffeur: !!chauffeur,
       chauffeurStatus: chauffeur?.status ?? null,
     });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+
+
+// ── Connexion par numéro + mot de passe (écran « Bon retour sur BIMNEXT ») ──
+// Contrairement à /quick-access (simple correspondance du numéro), on vérifie
+// ici le mot de passe choisi à l'inscription. Plusieurs comptes peuvent
+// partager un numéro : on essaie chacun, du plus récemment actif au plus ancien.
+//
+// Ancien compte rapide (créé avec le numéro seul, sans mot de passe choisi) :
+// si aucun compte de ce numéro n'a de mot de passe choisi, on répond 403
+// PASSWORD_SETUP_REQUIRED avec un jeton court (15 min) qui permet uniquement
+// d'appeler /auth/setup-password pour créer le mot de passe.
+const issuePhoneSession = async (user, { requestIp, deviceModel, deviceBrand }) => {
+  if (user.refreshToken) {
+    emitToUser(user.id, 'auth:new_device_login', {
+      deviceModel: deviceModel || null,
+      deviceBrand: deviceBrand || null,
+      at: new Date().toISOString(),
+    });
+    if (user.expoPushToken) {
+      sendPushNotification(
+        user.expoPushToken,
+        '⚠️ Nouvelle connexion détectée',
+        "Votre compte BIM NEXT vient d'être utilisé depuis un autre appareil. Si ce n'est pas vous, ouvrez l'app pour sécuriser votre compte."
+      ).catch(() => {});
+    }
+  }
+
+  const payload = { userId: user.id, email: user.email };
+  let token, refreshToken;
+  if (user.isQuickAccount) {
+    payload.accountType = 'quick';
+    refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, { expiresIn: '3650d' });
+    token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '180d' });
+  } else {
+    refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, { expiresIn: '3650d' });
+    token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '2h' });
+  }
+
+  await user.update({
+    refreshToken,
+    Token: token,
+    lastIp: requestIp || user.lastIp,
+    deviceModel: deviceModel || user.deviceModel,
+    deviceBrand: deviceBrand || user.deviceBrand,
+  });
+
+  const chauffeur = await Chauffeur.findOne({ where: { userId: user.id } });
+
+  return {
+    token,
+    refreshToken,
+    userId: user.id,
+    isNewAccount: false,
+    isQuickAccount: user.isQuickAccount,
+    isChauffeur: !!chauffeur,
+    chauffeurStatus: chauffeur?.status ?? null,
+  };
+};
+
+const PASSWORD_SETUP_PURPOSE = 'password-setup';
+
+const phoneLogin = async (req, res) => {
+  const { telephone, password, deviceModel, deviceBrand } = req.body;
+  const cleanPhone = telephone ? String(telephone).trim() : '';
+  const requestIp = (req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.ip || null;
+
+  if (!cleanPhone) {
+    return res.status(400).json({ message: 'Entrez votre numéro de téléphone.' });
+  }
+
+  try {
+    const candidates = await User.findAll({
+      where: { telephone: cleanPhone },
+      order: [['updatedAt', 'DESC']],
+    });
+    if (!candidates.length) {
+      return res.status(404).json({
+        message: "Ce numéro est introuvable. Vérifiez le numéro ou créez un nouveau compte.",
+      });
+    }
+
+    let user = null;
+    if (password) {
+      for (const c of candidates) {
+        if (c.password && await bcrypt.compare(String(password), c.password)) { user = c; break; }
+      }
+    }
+
+    if (!user) {
+      // Aucun compte de ce numéro n'a de mot de passe choisi → ancien compte
+      // rapide : on l'envoie vers l'écran « crée ton nouveau mot de passe ».
+      const anyChosen = candidates.some((c) => c.passwordSetByUser);
+      const legacy = !anyChosen ? candidates.find((c) => c.isActive) : null;
+      if (legacy) {
+        const setupToken = jwt.sign(
+          { userId: legacy.id, purpose: PASSWORD_SETUP_PURPOSE },
+          process.env.JWT_SECRET,
+          { expiresIn: '15m' }
+        );
+        return res.status(403).json({
+          code: 'PASSWORD_SETUP_REQUIRED',
+          message: 'Veuillez créer un nouveau mot de passe pour accéder à votre compte.',
+          setupToken,
+        });
+      }
+      if (!password) {
+        return res.status(400).json({ message: 'Entrez votre mot de passe.' });
+      }
+      return res.status(401).json({ message: 'Mot de passe incorrect.' });
+    }
+    if (!user.isActive) {
+      return res.status(409).json({ message: "Ce compte n'est pas activé. Contactez le support BIM NEXT." });
+    }
+
+    const session = await issuePhoneSession(user, { requestIp, deviceModel, deviceBrand });
+    return res.status(200).json({ message: 'Connexion réussie', ...session });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// ── Création du mot de passe d'un ancien compte rapide ──
+// Appelé avec le jeton renvoyé par /phone-login (PASSWORD_SETUP_REQUIRED).
+// Le mot de passe n'est accepté qu'une fois : dès que passwordSetByUser est
+// vrai, le jeton ne sert plus à rien.
+const setupPassword = async (req, res) => {
+  const { setupToken, newPassword, deviceModel, deviceBrand } = req.body;
+  const requestIp = (req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.ip || null;
+
+  if (!/^\d{6}$/.test(String(newPassword ?? ''))) {
+    return res.status(400).json({ message: 'Le mot de passe doit contenir exactement 6 chiffres.' });
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(String(setupToken ?? ''), process.env.JWT_SECRET);
+  } catch {
+    return res.status(401).json({ message: 'Lien expiré. Reconnectez-vous avec votre numéro.' });
+  }
+  if (decoded?.purpose !== PASSWORD_SETUP_PURPOSE) {
+    return res.status(401).json({ message: 'Jeton invalide.' });
+  }
+
+  try {
+    const user = await User.findByPk(decoded.userId);
+    if (!user || !user.isActive) {
+      return res.status(404).json({ message: 'Compte introuvable ou désactivé.' });
+    }
+    if (user.passwordSetByUser) {
+      return res.status(409).json({ message: 'Ce compte a déjà un mot de passe. Connectez-vous avec celui-ci.' });
+    }
+
+    await user.update({
+      password: await bcrypt.hash(String(newPassword), 10),
+      passwordSetByUser: true,
+      loginAttempts: 0,
+      lockUntil: null,
+    });
+
+    const session = await issuePhoneSession(user, { requestIp, deviceModel, deviceBrand });
+    return res.status(200).json({ message: 'Mot de passe créé', ...session });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
@@ -259,16 +449,52 @@ const createAgent = async (req, res) => {
   }
 };
 
+// Session Espace Livreur (même jeton que /livreur/login) pour un compte ayant
+// un profil livreur actif — permet à l'écran de connexion principal de
+// rediriger directement vers l'Espace Livreur.
+const buildLivreurSession = async (user) => {
+  const livreur = await Livreur.findOne({
+    where: { userId: user.id, status: 'active' },
+    include: [{ model: Company, as: 'company', attributes: ['companyId', 'name', 'logo'] }],
+  });
+  if (!livreur) return null;
+  const livreurToken = jwt.sign(
+    { userId: user.id, email: user.email, livreurId: livreur.livreurId, isLivreur: true },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+  return {
+    livreurToken,
+    livreurUser: {
+      id: user.id, username: user.username, email: user.email, imageUrl: user.imageUrl,
+      livreur: {
+        livreurId: livreur.livreurId,
+        status: livreur.status,
+        rating: livreur.rating,
+        ratingCount: livreur.ratingCount,
+        isOnline: livreur.isOnline,
+        company: livreur.company,
+      },
+    },
+  };
+};
+
 const login = async (req, res) => {
-  const { email, password, device, location, appVersion } = req.body;
+  const { password, device, location, appVersion } = req.body;
+  const email = req.body.email ? String(req.body.email).trim() : '';
   try {
-    const user = await User.findOne({ where: { email } });
+    const user = await User.findOne({ where: { email } })
+      || await User.findOne({ where: { email: email.toLowerCase() } });
     if (!user) {
       return res.status(404).json({ message: 'Utilisateur introuvable' });
     }
 
+    // Les administrateurs BIM ne sont jamais verrouillés ni désactivés par les
+    // tentatives incorrectes (cela bloquait l'Espace Gestion / admin-bim).
+    const isAdmin = await isBimAdminUserId(user.id);
+
     // Compte verrouillé après 3 tentatives incorrectes
-    if (user.lockUntil && user.lockUntil > new Date()) {
+    if (!isAdmin && user.lockUntil && user.lockUntil > new Date()) {
       return res.status(423).json({
         message: 'Compte verrouillé après 3 tentatives incorrectes. Veuillez réinitialiser votre mot de passe.',
         locked: true,
@@ -276,15 +502,31 @@ const login = async (req, res) => {
     }
 
     // Compte inactif
-    if (!user.isActive) {
+    if (!user.isActive && !isAdmin) {
       return res.status(409).json({
         message: "Ce compte n'est pas encore activé. Contactez le support BIM NEXT pour l'activer.",
       });
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    const isPasswordValid = !!password && await bcrypt.compare(String(password), user.password);
 
     if (!isPasswordValid) {
+      // Mot de passe livreur saisi sur l'écran principal → connexion directe
+      // à l'Espace Livreur (sans compter de tentative incorrecte).
+      const livreurRow = password
+        ? await Livreur.findOne({ where: { userId: user.id, status: 'active' }, attributes: ['livreurPassword'] })
+        : null;
+      if (livreurRow?.livreurPassword && await bcrypt.compare(String(password), livreurRow.livreurPassword)) {
+        const livreurSession = await buildLivreurSession(user);
+        if (livreurSession) {
+          return res.status(200).json({ message: 'Connexion livreur réussie', space: 'livreur', livreurOnly: true, userId: user.id, ...livreurSession });
+        }
+      }
+
+      if (isAdmin) {
+        return res.status(401).json({ message: 'Mot de passe incorrect' });
+      }
+
       const newAttempts = (user.loginAttempts || 0) + 1;
 
       if (newAttempts >= 3) {
@@ -310,13 +552,16 @@ const login = async (req, res) => {
     const refreshToken = jwt.sign(
       { userId: user.id, email: user.email },
       process.env.JWT_REFRESH_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '3650d' }
     );
     const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, {
       expiresIn: '2h',
     });
 
-    await user.update({ refreshToken, Token: token, loginAttempts: 0, lockUntil: null });
+    await user.update({
+      refreshToken, Token: token, loginAttempts: 0, lockUntil: null,
+      ...(isAdmin && !user.isActive ? { isActive: true } : {}),
+    });
 
     // Récupération du rôle réel et du companyId
     const userRoleRecord = await sequelize.models.UserRole.findOne({ where: { userId: user.id } });
@@ -327,12 +572,21 @@ const login = async (req, res) => {
       roleName = roleRecord?.name ?? null;
       companyId = userRoleRecord.companyId ?? null;
     }
+    if (isAdmin) roleName = 'BIM';
+
+    // Espace vers lequel l'app doit rediriger : admin > livreur > chauffeur > client.
+    const chauffeur = await Chauffeur.findOne({ where: { userId: user.id } });
+    const livreurSession = isAdmin ? null : await buildLivreurSession(user);
+    const space = isAdmin ? 'gestion'
+      : livreurSession ? 'livreur'
+      : (chauffeur && chauffeur.status !== 'rejected') ? 'chauffeur'
+      : 'client';
 
     // Email alerte connexion (fire & forget)
     try {
       await mailer.sendMail({
         from: 'noreply@bimreseau.com',
-        to: email,
+        to: user.email,
         subject: 'Alerte de sécurité – Connexion détectée sur votre compte BIM NEXT',
         html: generateNewLoginAlertEmailTemplate(user.username, device, location, appVersion, user.createdAt),
       });
@@ -344,10 +598,14 @@ const login = async (req, res) => {
       message: 'Login successful',
       token,
       refreshToken,
-      status: user.isActive,
+      status: true,
       role: roleName,
       companyId,
       userId: user.id,
+      space,
+      isChauffeur: !!chauffeur,
+      chauffeurStatus: chauffeur?.status ?? null,
+      ...(livreurSession || {}),
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -412,7 +670,7 @@ const askPasswordReset = async (req, res) => {
       // ce qui rendait le problème invisible côté utilisateur ET côté logs).
       const sent = await sendEmail({
         to: email,
-        subject: 'Activation de votre compte Bim',
+        subject: 'Réinitialisation de votre mot de passe BIM NEXT',
         html: generateOtpEmailTemplate(user.username, otp),
       });
 
@@ -465,6 +723,7 @@ const resetPassword = async (req, res) => {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await user.update({
       password: hashedPassword,
+      passwordSetByUser: true,
       loginAttempts: 0,
       lockUntil: null,
       isActive: true,
@@ -783,7 +1042,7 @@ const updateUserPassword = async (req, res) => {
       return res.status(400).json({ message: 'Mot de passe actuel incorrect' });
     }
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await User.update({ password: hashedPassword }, { where: { id: user.id } });
+    await User.update({ password: hashedPassword, passwordSetByUser: true }, { where: { id: user.id } });
     return res.status(200).json({ message: 'Mot de passe mis à jour avec succès' });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -804,7 +1063,7 @@ const secureMyAccount = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
 
     const hashedPassword = await bcrypt.hash(String(newPassword).trim(), 10);
-    await user.update({ password: hashedPassword });
+    await user.update({ password: hashedPassword, passwordSetByUser: true });
 
     return res.status(200).json({ message: 'Mot de passe mis à jour — votre compte est sécurisé.' });
   } catch (error) {
@@ -900,8 +1159,21 @@ const refreshToken = async (req, res) => {
     if (!refreshToken) {
       return res.status(400).json({ message: 'Refresh token is required' });
     }
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-    const user = await User.findOne({ where: { id: decoded.userId, refreshToken } });
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    } catch {
+      return res.status(401).json({ message: 'Invalid refresh token' });
+    }
+    let user = await User.findOne({ where: { id: decoded.userId, refreshToken } });
+    // Un admin BIM est souvent connecté à la fois sur l'app (Espace Gestion) et
+    // sur admin-bim : chaque connexion remplace le refreshToken stocké, ce qui
+    // déconnectait l'autre. Pour eux, un jeton signé valide suffit tant que la
+    // session n'a pas été fermée (refreshToken non nul).
+    if (!user && await isBimAdminUserId(decoded.userId)) {
+      const admin = await User.findByPk(decoded.userId);
+      if (admin?.refreshToken) user = admin;
+    }
     if (!user) {
       return res.status(401).json({ message: 'Invalid refresh token' });
     }
@@ -1062,6 +1334,12 @@ const storeExpoPushToken = async (req, res) => {
       });
     }
 
+    // Seul le propriétaire du compte peut lier son téléphone (sinon n'importe
+    // qui pouvait détourner les notifications d'un autre compte).
+    if (String(req.user?.id) !== String(userId)) {
+      return res.status(403).json({ message: "FORBIDDEN", error: "Action non autorisée" });
+    }
+
     const user = await User.findByPk(userId);
 
     if (!user) {
@@ -1071,7 +1349,8 @@ const storeExpoPushToken = async (req, res) => {
       });
     }
 
-    
+    // Ce téléphone ne doit notifier que le compte connecté en ce moment.
+    await claimPushToken(user.id, tokenPush);
     await user.update({
       expoPushToken: tokenPush
     });
@@ -2123,6 +2402,8 @@ export const resetAllBalances = async (req, res) => {
 export {
   register,
   quickAccess,
+  phoneLogin,
+  setupPassword,
   login,
   askPasswordReset,
   resetPassword,

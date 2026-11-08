@@ -6,6 +6,7 @@ import { parseLocalDayStart, parseLocalDayEnd } from "../utils/dateRange.util.js
 import { emitOrderUpdate, emitToUser, emitToAdmin } from "../services/socket.service.js";
 import { recordConsumptionAndMaybeGrantBonus } from "../services/loyalty.service.js";
 import { notifyBimAdmins } from "../services/bimAdminNotify.service.js";
+import { pushToUser } from "../services/pushNotification.service.js";
 
 export const createOrder = async (req, res) => {
   try {
@@ -15,10 +16,10 @@ export const createOrder = async (req, res) => {
     if (!items || !Array.isArray(items) || items.length === 0)
       return res.status(400).json({ message: "Le panier est vide" });
     if (!shippingAddress || !clientPhone) {
-      return res.status(400).json({ message: "L'adresse de livraison et le numéro de téléphone sont obligatoires" });
+      return res.status(400).json({ message: "L'adresse de livraison et le numÃ©ro de tÃ©lÃ©phone sont obligatoires" });
     }
-    // companyId est optionnel : une commande de "produits aléatoires"
-    // (non rattachés à une entreprise) n'a pas de companyId.
+    // companyId est optionnel : une commande de "produits alÃ©atoires"
+    // (non rattachÃ©s Ã  une entreprise) n'a pas de companyId.
 
     const orderNumber = `ORD-${Date.now()}-${userId}`;
 
@@ -45,8 +46,8 @@ export const createOrder = async (req, res) => {
 
     const grandTotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0).toFixed(2);
 
-    // Fiche de consommation + fidélité (10 achats d'un produit → le 11ème offert).
-    // On ignore les commandes "bonus" elles-mêmes pour ne pas les recompter.
+    // Fiche de consommation + fidÃ©litÃ© (10 achats d'un produit â†’ le 11Ã¨me offert).
+    // On ignore les commandes "bonus" elles-mÃªmes pour ne pas les recompter.
     if (paymentMethod !== 'bonus') {
       for (const order of created) {
         try { await recordConsumptionAndMaybeGrantBonus(order); } catch {}
@@ -69,7 +70,7 @@ export const createOrder = async (req, res) => {
       ioInstance.to('admin_room').emit('admin:activity', {
         kind: 'commande',
         title: 'Nouvelle commande',
-        message: `Commande ${orderNumber} — ${grandTotal} EC.`,
+        message: `Commande ${orderNumber} â€” ${grandTotal} EC.`,
         amount: grandTotal,
         reference: orderNumber,
         createdAt: new Date().toISOString(),
@@ -83,13 +84,13 @@ export const createOrder = async (req, res) => {
         const { sendPushNotification } = await import('../services/pushNotification.service.js');
         await sendPushNotification(
           sender.expoPushToken,
-          '✅ Commande reçue',
-          `Votre commande ${orderNumber} (${grandTotal} EC) a bien été envoyée. Suivez son avancement dans l'app.`
+          'âœ… Commande reÃ§ue',
+          `Votre commande ${orderNumber} (${grandTotal} EC) a bien Ã©tÃ© envoyÃ©e. Suivez son avancement dans l'app.`
         );
       }
       notifyBimAdmins(
-        "🛒 Nouvelle commande",
-        `${sender?.username ?? "Un utilisateur"} a passé une commande de ${grandTotal} EC (${orderNumber}).`
+        "ðŸ›’ Nouvelle commande",
+        `${sender?.username ?? "Un utilisateur"} a passÃ© une commande de ${grandTotal} EC (${orderNumber}).`
       ).catch(() => {});
     } catch {}
 
@@ -161,10 +162,10 @@ export const getUserOrders = async (req, res) => {
   }
 };
 
-// Le livreur confirme avoir reçu l'argent en espèces à la remise de la
-// commande — on règle la commande directement (livrée + payée) SANS jamais
-// toucher au solde EC du client : ce paiement n'est jamais passé par le
-// portefeuille, c'est de l'argent physique donné en main au livreur.
+// Le livreur confirme avoir reÃ§u l'argent en espÃ¨ces Ã  la remise de la
+// commande â€” on rÃ¨gle la commande directement (livrÃ©e + payÃ©e) SANS jamais
+// toucher au solde EC du client : ce paiement n'est jamais passÃ© par le
+// portefeuille, c'est de l'argent physique donnÃ© en main au livreur.
 export const markOrderPaidOnDelivery = async (req, res) => {
   try {
     const livreurUserId = req.user?.id;
@@ -180,7 +181,7 @@ export const markOrderPaidOnDelivery = async (req, res) => {
       { where: { orderNumber, livreurId: livreur.livreurId } }
     );
 
-    if (!count) return res.status(404).json({ message: "Commande introuvable, déjà traitée, ou qui ne vous est pas assignée" });
+    if (!count) return res.status(404).json({ message: "Commande introuvable, dÃ©jÃ  traitÃ©e, ou qui ne vous est pas assignÃ©e" });
 
     const orderRows = await Order.findAll({
       where: { orderNumber },
@@ -197,32 +198,32 @@ export const markOrderPaidOnDelivery = async (req, res) => {
     });
 
     notifyBimAdmins(
-      "💵 Commande payée cash",
-      `Commande ${orderNumber} — ${totalAmount} EC payés en espèces par ${clientName} au livreur.`
+      "ðŸ’µ Commande payÃ©e cash",
+      `Commande ${orderNumber} â€” ${totalAmount} EC payÃ©s en espÃ¨ces par ${clientName} au livreur.`
     ).catch(() => {});
     emitToAdmin('admin:activity', {
       kind: 'commande',
-      title: 'Commande payée cash',
-      message: `Commande ${orderNumber} — ${totalAmount} EC payés en espèces par ${clientName}.`,
+      title: 'Commande payÃ©e cash',
+      message: `Commande ${orderNumber} â€” ${totalAmount} EC payÃ©s en espÃ¨ces par ${clientName}.`,
       amount: totalAmount,
       reference: orderNumber,
       createdAt: new Date().toISOString(),
     });
 
-    return res.json({ message: "Commande marquée livrée et payée (espèces)", orderNumber, amount: totalAmount });
+    return res.json({ message: "Commande marquÃ©e livrÃ©e et payÃ©e (espÃ¨ces)", orderNumber, amount: totalAmount });
   } catch (error) {
     res.status(500).json({ message: "Erreur serveur", error: error.message });
   }
 };
 
-// POST /order/pay/:orderNumber — Pay order at delivery (PIN, no commission — all to company)
+// POST /order/pay/:orderNumber â€” Pay order at delivery (PIN, no commission â€” all to company)
 export const payOrderAtDelivery = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const userId = req.user?.id;
     const { orderNumber } = req.params;
 
-    // 1. Verify sender (paiement confirmé par simple appui, sans code PIN)
+    // 1. Verify sender (paiement confirmÃ© par simple appui, sans code PIN)
     const sender = await User.findByPk(userId, { transaction: t, lock: t.LOCK.UPDATE });
     if (!sender) {
       await t.rollback();
@@ -241,7 +242,7 @@ export const payOrderAtDelivery = async (req, res) => {
     }
     if (orderRows[0].paymentStatus === 'paid') {
       await t.rollback();
-      return res.status(400).json({ message: "Cette commande a déjà été payée" });
+      return res.status(400).json({ message: "Cette commande a dÃ©jÃ  Ã©tÃ© payÃ©e" });
     }
 
     // 3. Total
@@ -256,7 +257,7 @@ export const payOrderAtDelivery = async (req, res) => {
 
     const companyId = orderRows[0].companyId;
 
-    // 4. Find company recipient — all amount goes to company (commission = 0)
+    // 4. Find company recipient â€” all amount goes to company (commission = 0)
     const companyRole = await sequelize.models.UserRole.findOne({ where: { companyId }, transaction: t });
     let recipient = companyRole
       ? await User.findByPk(companyRole.userId, { transaction: t, lock: t.LOCK.UPDATE })
@@ -265,14 +266,14 @@ export const payOrderAtDelivery = async (req, res) => {
       recipient = await User.findOne({ where: { email: 'bimbank@bimreseau.com' }, transaction: t, lock: t.LOCK.UPDATE });
     }
 
-    // 5. Apply balances — no commission split, full amount to company
+    // 5. Apply balances â€” no commission split, full amount to company
     const newSenderBalance = parseFloat((senderBalance - totalAmount).toFixed(2));
     await sender.update({ soldNumber: newSenderBalance }, { transaction: t });
     if (recipient) {
       await recipient.update({ soldNumber: parseFloat(recipient.soldNumber || 0) + totalAmount }, { transaction: t });
     }
 
-    // 6. Update order status → delivered + paid
+    // 6. Update order status â†’ delivered + paid
     await Order.update(
       { status: 'delivered', paymentStatus: 'paid' },
       { where: { orderNumber, userId }, transaction: t }
@@ -280,13 +281,13 @@ export const payOrderAtDelivery = async (req, res) => {
 
     // 7. Transaction records
     await Transaction.bulkCreate([
-      { amount: totalAmount, status: "réussi", description: `Paiement commande ${orderNumber}`, transactionType: "paiement", id: sender.id },
-      { amount: totalAmount, status: "réussi", description: `Réception commande ${orderNumber}`, transactionType: "paiement", id: recipient?.id ?? sender.id },
+      { amount: totalAmount, status: "rÃ©ussi", description: `Paiement commande ${orderNumber}`, transactionType: "paiement", id: sender.id },
+      { amount: totalAmount, status: "rÃ©ussi", description: `RÃ©ception commande ${orderNumber}`, transactionType: "paiement", id: recipient?.id ?? sender.id },
     ], { transaction: t });
 
     // 8. Notification for sender
     await Notification.create(
-      { title: "Paiement réussi ✅", message: `Paiement de ${totalAmount} EC pour la commande ${orderNumber}.`, type: "SUCCESS", userId: sender.id },
+      { title: "Paiement rÃ©ussi âœ…", message: `Paiement de ${totalAmount} EC pour la commande ${orderNumber}.`, type: "SUCCESS", userId: sender.id },
       { transaction: t }
     );
 
@@ -303,8 +304,9 @@ export const payOrderAtDelivery = async (req, res) => {
     emitToUser(String(userId), 'wallet:update', { soldNumber: newSenderBalance });
     // Trigger notification badge refresh
     emitToUser(String(userId), 'notification', {});
+    pushToUser(userId, 'âœ… Paiement rÃ©ussi', `Paiement de ${totalAmount} EC effectuÃ©. Votre commande ${orderNumber} est livrÃ©e. Merci !`, { orderNumber }).catch(() => {});
 
-    return res.json({ message: "Paiement réussi, commande livrée", orderNumber, amount: totalAmount });
+    return res.json({ message: "Paiement rÃ©ussi, commande livrÃ©e", orderNumber, amount: totalAmount });
   } catch (error) {
     await t.rollback();
     res.status(500).json({ message: "Erreur serveur", error: error.message });
@@ -339,9 +341,9 @@ export const getOrders = async (req, res) => {
     if (paymentMethod) where.paymentMethod = paymentMethod;
 
     if (startDate || endDate) {
-      // `new Date("YYYY-MM-DD")` parse en UTC — avec startDate === endDate
+      // `new Date("YYYY-MM-DD")` parse en UTC â€” avec startDate === endDate
       // (un seul jour), `Op.between` entre deux minuits UTC ne couvrait
-      // quasiment aucune donnée. On couvre toute la journée calendaire locale.
+      // quasiment aucune donnÃ©e. On couvre toute la journÃ©e calendaire locale.
       const dateWhere = {};
       if (startDate) dateWhere[Op.gte] = parseLocalDayStart(startDate);
       if (endDate) dateWhere[Op.lte] = parseLocalDayEnd(endDate);
@@ -411,26 +413,26 @@ export const updateOrder = async (req, res) => {
     if (!order) return res.status(404).json({ message: "Commande introuvable" });
 
     // Changer le STATUT d'une commande est une action d'administration
-    // (confirmer/préparer/expédier/livrer/annuler) — réservée au staff
-    // (BIM ou entreprise, cette dernière utilisée par le portail entreprise
-    // pour ses propres commandes). Les mises à jour d'adresse/téléphone
-    // (ex: produit offert fidélité, renseignées par le client lui-même) ne
-    // sont pas concernées.
+    // (confirmer/prÃ©parer/expÃ©dier/livrer/annuler) â€” rÃ©servÃ©e au staff
+    // (BIM ou entreprise, cette derniÃ¨re utilisÃ©e par le portail entreprise
+    // pour ses propres commandes). Les mises Ã  jour d'adresse/tÃ©lÃ©phone
+    // (ex: produit offert fidÃ©litÃ©, renseignÃ©es par le client lui-mÃªme) ne
+    // sont pas concernÃ©es.
     if (req.body.status) {
       const userRoleRecord = await sequelize.models.UserRole.findOne({ where: { userId: req.user.id } });
       const roleName = userRoleRecord
         ? (await sequelize.models.Role.findByPk(userRoleRecord.roleId))?.name
         : null;
       if (roleName !== 'BIM' && roleName !== 'COMPANY_ADMIN') {
-        return res.status(403).json({ message: 'Accès réservé au staff BIM ou entreprise.' });
+        return res.status(403).json({ message: 'AccÃ¨s rÃ©servÃ© au staff BIM ou entreprise.' });
       }
     }
 
-    // Mise à jour de la ligne ciblée
+    // Mise Ã  jour de la ligne ciblÃ©e
     await order.update(req.body);
 
-    // Si le statut change → propager à TOUTES les lignes du même orderNumber
-    // (une commande multi-articles crée N lignes avec le même orderNumber)
+    // Si le statut change â†’ propager Ã  TOUTES les lignes du mÃªme orderNumber
+    // (une commande multi-articles crÃ©e N lignes avec le mÃªme orderNumber)
     if (req.body.status && order.orderNumber) {
       const updatePayload = { status: req.body.status };
       if (req.body.paymentStatus) updatePayload.paymentStatus = req.body.paymentStatus;
@@ -438,11 +440,11 @@ export const updateOrder = async (req, res) => {
       await Order.update(updatePayload, {
         where: {
           orderNumber: order.orderNumber,
-          orderId:     { [Op.ne]: order.orderId }, // évite la double update
+          orderId:     { [Op.ne]: order.orderId }, // Ã©vite la double update
         },
       });
 
-      // ── Notifier en temps réel (socket) ──────────────────────────────
+      // â”€â”€ Notifier en temps rÃ©el (socket) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const payload = {
         orderNumber:   order.orderNumber,
         status:        req.body.status,
@@ -452,14 +454,14 @@ export const updateOrder = async (req, res) => {
       emitOrderUpdate(order.orderNumber, payload);
       emitToUser(String(order.userId), 'order:status_updated', payload);
 
-      // ── Push notification à chaque étape ─────────────────────────────
+      // â”€â”€ Push notification Ã  chaque Ã©tape â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       try {
         const STATUS_PUSH = {
-          confirmed:  { title: '✅ Commande confirmée',      body: `Votre commande ${order.orderNumber} a été confirmée par l'entreprise.` },
-          processing: { title: '🔧 Commande en préparation', body: `Votre commande ${order.orderNumber} est en cours de préparation.`       },
-          shipped:    { title: '🚴 Commande expédiée !',     body: `Votre commande ${order.orderNumber} est en route. Préparez-vous à recevoir votre livraison.` },
-          delivered:  { title: '📦 Commande livrée !',      body: `Votre commande ${order.orderNumber} a été livrée avec succès. Merci !`   },
-          cancelled:  { title: '❌ Commande annulée',        body: `Votre commande ${order.orderNumber} a été annulée.`                      },
+          confirmed:  { title: 'âœ… Commande confirmÃ©e',      body: `Votre commande ${order.orderNumber} a Ã©tÃ© confirmÃ©e par l'entreprise.` },
+          processing: { title: 'ðŸ”§ Commande en prÃ©paration', body: `Votre commande ${order.orderNumber} est en cours de prÃ©paration.`       },
+          shipped:    { title: 'ðŸš´ Commande expÃ©diÃ©e !',     body: `Votre commande ${order.orderNumber} est en route. PrÃ©parez-vous Ã  recevoir votre livraison.` },
+          delivered:  { title: 'ðŸ“¦ Commande livrÃ©e !',      body: `Votre commande ${order.orderNumber} a Ã©tÃ© livrÃ©e avec succÃ¨s. Merci !`   },
+          cancelled:  { title: 'âŒ Commande annulÃ©e',        body: `Votre commande ${order.orderNumber} a Ã©tÃ© annulÃ©e.`                      },
         };
         const pushData = STATUS_PUSH[req.body.status];
         if (pushData) {
@@ -472,7 +474,7 @@ export const updateOrder = async (req, res) => {
       } catch {}
     }
 
-    res.json({ message: "Commande mise à jour avec succès", order });
+    res.json({ message: "Commande mise Ã  jour avec succÃ¨s", order });
   } catch (error) {
     res.status(500).json({ message: "Erreur serveur", error: error.message });
   }
@@ -483,19 +485,19 @@ export const deleteOrder = async (req, res) => {
     const order = await Order.findByPk(req.params.id);
     if (!order) return res.status(404).json({ message: "Commande introuvable" });
     await order.destroy();
-    res.json({ message: "Commande supprimée avec succès" });
+    res.json({ message: "Commande supprimÃ©e avec succÃ¨s" });
   } catch (error) {
     res.status(500).json({ message: "Erreur serveur", error: error.message });
   }
 };
 
-// Commandes de l'entreprise du company admin connecté
+// Commandes de l'entreprise du company admin connectÃ©
 export const getCompanyOrders = async (req, res) => {
   try {
     const userId = req.user?.id;
     const userRoleRecord = await sequelize.models.UserRole.findOne({ where: { userId } });
     const companyId = userRoleRecord?.companyId;
-    if (!companyId) return res.status(403).json({ message: "Aucune entreprise associée à ce compte" });
+    if (!companyId) return res.status(403).json({ message: "Aucune entreprise associÃ©e Ã  ce compte" });
 
     const { status, startDate, endDate, search, page = 1, pageSize = 20 } = req.query;
     const limit = parseInt(pageSize, 10);
@@ -523,13 +525,13 @@ export const getCompanyOrders = async (req, res) => {
   }
 };
 
-// Statistiques agrégées (commandes + paiements) pour la company admin connectée
+// Statistiques agrÃ©gÃ©es (commandes + paiements) pour la company admin connectÃ©e
 export const getMyCompanyStats = async (req, res) => {
   try {
     const userId = req.user?.id;
     const userRoleRecord = await sequelize.models.UserRole.findOne({ where: { userId } });
     const companyId = userRoleRecord?.companyId;
-    if (!companyId) return res.status(403).json({ message: "Aucune entreprise associée à ce compte" });
+    if (!companyId) return res.status(403).json({ message: "Aucune entreprise associÃ©e Ã  ce compte" });
 
     const { period } = req.query;
     const createdAtFilter = {};
@@ -568,6 +570,117 @@ export const getMyCompanyStats = async (req, res) => {
       },
     });
   } catch (error) {
+    res.status(500).json({ message: "Erreur serveur", error: error.message });
+  }
+};
+
+
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ * Ã‰conomies du mois â€” carte Â« Tu as Ã©conomisÃ© ce mois-ci Â» de l'accueil.
+ * GET /order/my-savings
+ * Ã©conomie d'une ligne = (prix catalogue Ã— quantitÃ©) âˆ’ montant payÃ©, si > 0.
+ * Les commandes annulÃ©es ne comptent pas.
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+export const getMySavings = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const rows = await Order.findAll({
+      where: { userId, createdAt: { [Op.gte]: monthStart }, status: { [Op.ne]: 'cancelled' } },
+      include: [{ model: Product, as: 'product', attributes: ['productId', 'price', 'reduction'] }],
+    });
+
+    let saved = 0;
+    let spent = 0;
+    for (const o of rows) {
+      const qty = parseInt(o.quantity || 1, 10);
+      const paid = parseFloat(o.totalAmount || 0);
+      const catalogue = parseFloat(o.product?.price || 0) * qty;
+      spent += paid;
+      if (catalogue > paid) saved += catalogue - paid;
+    }
+
+    return res.json({
+      saved: parseFloat(saved.toFixed(2)),
+      spent: parseFloat(spent.toFixed(2)),
+      orders: new Set(rows.map((r) => r.orderNumber)).size,
+      since: monthStart.toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ * PrÃ©paiement en EC d'une commande (parcours Â« Payer avec Mes Ecoins Â»).
+ * POST /order/prepay/:orderNumber
+ * DÃ©bite le solde du client et crÃ©dite l'entreprise (ou BIM), marque la
+ * paiement Â« paid Â» â€” le statut reste Â« pending Â» pour qu'elle apparaisse
+ * toujours dans les commandes disponibles des livreurs (filtre status: 'pending').
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+export const prepayOrder = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const userId = req.user?.id;
+    const { orderNumber } = req.params;
+
+    const sender = await User.findByPk(userId, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!sender) { await t.rollback(); return res.status(404).json({ message: "Utilisateur introuvable" }); }
+
+    const orderRows = await Order.findAll({ where: { orderNumber, userId }, transaction: t, lock: t.LOCK.UPDATE });
+    if (!orderRows.length) { await t.rollback(); return res.status(404).json({ message: "Commande introuvable" }); }
+    if (orderRows[0].paymentStatus === 'paid') { await t.rollback(); return res.status(400).json({ message: "Cette commande a dÃ©jÃ  Ã©tÃ© payÃ©e" }); }
+    if (orderRows[0].status === 'cancelled') { await t.rollback(); return res.status(400).json({ message: "Cette commande a Ã©tÃ© annulÃ©e" }); }
+
+    const totalAmount = parseFloat(orderRows.reduce((s, o) => s + parseFloat(o.totalAmount), 0).toFixed(2));
+    const senderBalance = parseFloat(sender.soldNumber || 0);
+    if (totalAmount > senderBalance) { await t.rollback(); return res.status(400).json({ message: "Solde insuffisant. Recharge ton compte ou choisis un autre moyen de paiement." }); }
+
+    const companyId = orderRows[0].companyId;
+    let recipient = null;
+    if (companyId) {
+      const companyRole = await sequelize.models.UserRole.findOne({ where: { companyId }, transaction: t });
+      if (companyRole) recipient = await User.findByPk(companyRole.userId, { transaction: t, lock: t.LOCK.UPDATE });
+    }
+    if (!recipient) {
+      recipient = await User.findOne({ where: { email: 'bimbank@bimreseau.com' }, transaction: t, lock: t.LOCK.UPDATE });
+    }
+
+    const newSenderBalance = parseFloat((senderBalance - totalAmount).toFixed(2));
+    await sender.update({ soldNumber: newSenderBalance }, { transaction: t });
+    if (recipient && recipient.id !== sender.id) {
+      await recipient.update({ soldNumber: parseFloat((parseFloat(recipient.soldNumber || 0) + totalAmount).toFixed(2)) }, { transaction: t });
+    }
+
+    await Order.update(
+      { paymentStatus: 'paid', paymentMethod: 'ec' },
+      { where: { orderNumber, userId }, transaction: t }
+    );
+
+    await Transaction.bulkCreate([
+      { amount: totalAmount, status: "rÃ©ussi", description: `Paiement commande ${orderNumber}`, transactionType: "paiement", id: sender.id },
+      { amount: totalAmount, status: "rÃ©ussi", description: `RÃ©ception commande ${orderNumber}`, transactionType: "paiement", id: recipient?.id ?? sender.id },
+    ], { transaction: t });
+
+    await Notification.create(
+      { title: "Paiement rÃ©ussi âœ…", message: `Paiement de ${totalAmount} EC pour la commande ${orderNumber}. Ta livraison arrive.`, type: "SUCCESS", userId: sender.id },
+      { transaction: t }
+    );
+
+    await t.commit();
+
+    emitOrderUpdate(orderNumber, { orderNumber, status: orderRows[0].status, paymentStatus: 'paid', updatedAt: new Date().toISOString() });
+    emitToUser(String(userId), 'order:status_updated', { orderNumber, status: orderRows[0].status });
+    emitToUser(String(userId), 'wallet:update', { soldNumber: newSenderBalance });
+    emitToUser(String(userId), 'notification', {});
+    pushToUser(userId, 'âœ… Paiement rÃ©ussi', `Paiement de ${totalAmount} EC pour la commande ${orderNumber}. Ta livraison arrive.`, { orderNumber }).catch(() => {});
+
+    return res.json({ message: "Paiement rÃ©ussi", orderNumber, amount: totalAmount, soldNumber: newSenderBalance });
+  } catch (error) {
+    await t.rollback();
     res.status(500).json({ message: "Erreur serveur", error: error.message });
   }
 };

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getOrders, getOrderById, updateOrder, deleteOrder, getCompanyOrders, getMyCompanyStats, createOrder, getUserOrders, markOrderPaidOnDelivery, payOrderAtDelivery } from '../controllers/order.controller.js';
+import { getOrders, getOrderById, updateOrder, deleteOrder, getCompanyOrders, getMyCompanyStats, createOrder, getUserOrders, markOrderPaidOnDelivery, payOrderAtDelivery, getMySavings, prepayOrder } from '../controllers/order.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
 import requireBimAdmin from '../../middlewares/requireBimAdmin.middleware.js';
 
@@ -7,10 +7,12 @@ const router = Router();
 
 router.post('/create', authMiddleware, createOrder);
 router.post('/pay/:orderNumber', authMiddleware, payOrderAtDelivery);
+router.post('/prepay/:orderNumber', authMiddleware, prepayOrder);
 router.put('/pay-delivery/:orderNumber', authMiddleware, markOrderPaidOnDelivery);
 router.get('/my-stats', authMiddleware, getMyCompanyStats);
 router.get('/my-orders', authMiddleware, getCompanyOrders);
 router.get('/mine', authMiddleware, getUserOrders);
+router.get('/my-savings', authMiddleware, getMySavings);
 // Listing global / suppression : réservés aux administrateurs BIM (ni le
 // portail entreprise ni l'app mobile grand public ne les utilisent).
 router.get('/', authMiddleware, requireBimAdmin, getOrders);

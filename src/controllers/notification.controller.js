@@ -208,3 +208,17 @@ export const markAsRead = async (req, res) => {
   }
 };
 
+
+
+// ── Tout marquer comme lu (écran Notifications de l'app) ──
+// PUT /notification_track/mark_all_read — uniquement les notifications de l'utilisateur connecté.
+export const markAllAsRead = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: 'Non authentifié' });
+    const [count] = await Notification.update({ isRead: true }, { where: { userId, isRead: false } });
+    res.status(200).json({ message: 'Toutes les notifications sont lues', count });
+  } catch (error) {
+    res.status(500).json({ message: "Erreur lors de la mise à jour des notifications", error: error.message });
+  }
+};

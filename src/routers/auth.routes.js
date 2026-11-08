@@ -3,6 +3,8 @@ import {
   login,
   register,
   quickAccess,
+  phoneLogin,
+  setupPassword,
   askPasswordReset,
   resetPassword,
   getAllUsers,
@@ -51,6 +53,8 @@ const router = Router();
 router.post('/reset-password', resetPassword);
 router.post('/register', register);
 router.post('/quick-access', quickAccess);
+router.post('/phone-login', phoneLogin);
+router.post('/setup-password', setupPassword);
 router.post('/create',authMiddleware, createUsers);
 router.post('/agent',createAgent);
 router.post('/login', login);
@@ -75,7 +79,7 @@ router.post('/users/:id/admin-recharge', authMiddleware, requireBimAdmin, adminR
 router.post('/users/:id/admin-reset-password', authMiddleware, requireBimAdmin, adminResetUserPassword);
 router.post('/refresh-token', refreshToken);
 router.post('/verify-otp', verifyOtp);
-router.post('/users/:userId/expoPushToken', storeExpoPushToken);
+router.post('/users/:userId/expoPushToken', authMiddleware, storeExpoPushToken);
 router.post('/verifyPwd', veryfUserPass);
 router.delete('/account', authMiddleware, deleteAccount);
 router.put('/users/:id/sold', authMiddleware, requireBimAdmin, updateSoldNumber);

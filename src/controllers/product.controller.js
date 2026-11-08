@@ -412,3 +412,91 @@ export const removeProductImage = async (req, res) => {
     return res.status(500).json({ message: error.message });
   }
 };
+
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Catalogue BIM NEXT — uniquement EAU, GAZ et CARBURANT
+ * GET /product/bim-catalogue?type=eau|gaz|carburant&search=
+ *
+ * Un produit appartient à un type si :
+ *   - le secteur (BusinessCategory) de son entreprise contient le mot-clé, ou
+ *   - une de ses catégories produit contient le mot-clé, ou
+ *   - (eau uniquement) son nom contient « eau », « bonbonne » ou « sachet ».
+ * Chaque produit revient avec `sub` (sous-catégorie affichée en puce),
+ * `effectivePrice` (prix après réduction) et `type`.
+ * ──────────────────────────────────────────────────────────────────────── */
+const BIM_TYPES = {
+  eau:       { sector: ['eau'],                 category: ['eau', 'bonbonne', 'sachet'], name: ['eau', 'bonbonne', 'sachet'] },
+  gaz:       { sector: ['gaz'],                 category: ['gaz', 'bouteille', 'détendeur', 'detendeur'], name: [] },
+  carburant: { sector: ['carburant', 'essence'], category: ['carburant', 'essence', 'gasoil', 'diesel', 'bidon'], name: [] },
+};
+
+const norm = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const hasAny = (text, words) => { const t = norm(text); return words.some((w) => t.includes(norm(w))); };
+
+export const classifyBimProduct = (p) => {
+  const sectorName = p.company?.category?.name || '';
+  const cats = (p.categories || []).map((c) => c.name);
+  for (const [type, rule] of Object.entries(BIM_TYPES)) {
+    if (hasAny(sectorName, rule.sector)) return type;
+  }
+  for (const [type, rule] of Object.entries(BIM_TYPES)) {
+    if (cats.some((c) => hasAny(c, rule.category))) return type;
+  }
+  for (const [type, rule] of Object.entries(BIM_TYPES)) {
+    if (rule.name.length && hasAny(p.name, rule.name)) return type;
+  }
+  return null;
+};
+
+export const getBimCatalogue = async (req, res) => {
+  try {
+    const type = norm(req.query.type || '');
+    const search = String(req.query.search || '').trim();
+    if (type && !BIM_TYPES[type]) {
+      return res.status(400).json({ message: 'Type inconnu. Utilisez eau, gaz ou carburant.' });
+    }
+
+    const where = {};
+    if (search) {
+      where[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const rows = await Product.findAll({
+      where,
+      order: [['price', 'ASC']],
+      include: [
+        { model: Currency, as: 'currency' },
+        { model: Category, as: 'categories', through: { attributes: [] } },
+        {
+          model: Company, as: 'company', attributes: ['companyId', 'name', 'businessId', 'logo'], required: false,
+          include: [{ model: BusinessCategory, as: 'category', attributes: ['businessId', 'name'] }],
+        },
+      ],
+    });
+
+    const items = [];
+    for (const row of rows) {
+      const p = row.toJSON();
+      const t = classifyBimProduct(p);
+      if (!t || (type && t !== type)) continue;
+      if (String(p.availability || '').toLowerCase() === 'indisponible') continue;
+      const price = parseFloat(p.price || 0);
+      const pct = parseFloat(p.reduction || 0);
+      const effectivePrice = pct > 0 && pct <= 100 ? +(price * (1 - pct / 100)).toFixed(2) : price;
+      const sectorWords = (BIM_TYPES[t].sector || []);
+      // Sous-catégorie : première catégorie produit qui n'est pas juste le nom du type.
+      const sub = (p.categories || []).map((c) => c.name).find((n) => !sectorWords.some((w) => norm(n) === norm(w))) || null;
+      items.push({ ...p, type: t, sub, effectivePrice });
+    }
+
+    const subs = [...new Set(items.map((i) => i.sub).filter(Boolean))];
+
+    return res.status(200).json({ data: items, total: items.length, subs, type: type || null });
+  } catch (error) {
+    return res.status(500).json({ message: 'Erreur lors de la récupération du catalogue', error: error.message });
+  }
+};

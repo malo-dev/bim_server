@@ -189,6 +189,14 @@ maxTransfertParJour: {
       defaultValue: false,
       allowNull: false,
     },
+    // Vrai si l'utilisateur a lui-même choisi son mot de passe. Faux pour les
+    // anciens comptes rapides (numéro seul, mot de passe aléatoire jamais vu) :
+    // ils doivent en créer un à leur prochaine connexion par numéro.
+    passwordSetByUser: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+      allowNull: false,
+    },
     // Email optionnel, distinct de la colonne `email` (identifiant unique de
     // connexion) — uniquement utilisé comme destinataire additionnel pour
     // les notifications de transaction.

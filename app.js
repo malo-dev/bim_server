@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import morgan from 'morgan';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import { isBimAdminEmail } from './src/utils/bimAdmin.util.js';
 import authRoutes from './src/routers/auth.routes.js';
 import roleRoutes from './src/routers/role.routes.js';
 import productRoutes from './src/routers/product.router.js';
@@ -48,12 +49,21 @@ dotenv.config();
 // skipSuccessfulRequests : les connexions réussies ne comptent pas dans la limite,
 // pour ne pas bloquer toute une équipe partageant la même IP (bureau/4G) après
 // quelques connexions légitimes.
+// Le serveur est derrière un proxy : sans `trust proxy`, req.ip vaut l'IP du
+// proxy pour TOUS les clients, qui partageaient donc un seul compteur (les
+// échecs des utilisateurs bloquaient aussi les admins pendant 15 min).
+app.set('trust proxy', 1);
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
+  // Les administrateurs BIM (Espace Gestion / admin-bim) ne sont jamais limités.
+  skip: async (req) => {
+    try { return await isBimAdminEmail(req.body?.email); } catch { return false; }
+  },
   message: { message: 'Trop de tentatives. Réessayez dans 15 minutes.' },
 });
 
@@ -107,6 +117,8 @@ app.use(
 
 // Rate limiter strict sur les routes auth sensibles
 app.use('/api/v1/auth/login', authLimiter);
+app.use('/api/v1/auth/phone-login', authLimiter);
+app.use('/api/v1/auth/setup-password', authLimiter);
 app.use('/api/v1/auth/reset-password', authLimiter);
 app.use('/api/v1/auth/ask-password-reset', authLimiter);
 
