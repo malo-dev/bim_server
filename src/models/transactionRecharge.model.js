@@ -60,6 +60,11 @@ const TransactionRecharge = sequelize.define(
       allowNull: true,
       comment: "Montant réellement débité en devise d'origine (ex: en CDF) quand currency = CDF",
     },
+
+    // Approbation admin : montant réellement crédité au client et frais
+    // d'abonnement prélevés (première recharge) — voir approveRecharge.
+    creditedAmount: { type: DataTypes.DECIMAL(15, 2), allowNull: true },
+    subscriptionFee: { type: DataTypes.DECIMAL(15, 2), allowNull: true },
   },
   {
     tableName: 'transactionsRecharge',

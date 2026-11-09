@@ -13,6 +13,10 @@ import { generateReferenceRecharge } from '../utils/generateReferenceSecond.js';
 import { sendPushNotification } from '../services/pushNotification.service.js';
 import { emitToUser, getIO, emitToAdmin } from '../services/socket.service.js';
 import { notifyBimAdmins } from '../services/bimAdminNotify.service.js';
+import { creditBim, OWNER_EMAIL } from './recharge.controller.js';
+
+// Frais d'abonnement annuel prélevés sur la première recharge (voir creditBim).
+const FRAIS_ABONNEMENT_EC = 1;
 /* ================= CONFIG RETRAIT ================= */
 
 const RETRAIT_CONFIG = {
@@ -1494,7 +1498,7 @@ export const getRechargesList = async (req, res) => {
     const [{ rows, count }, sumResult] = await Promise.all([
       TransactionRecharge.findAndCountAll({
         where,
-        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'email'] }],
+        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'email', 'nRecharge', 'TokenAbonemment'] }],
         order: [['createdAt', 'DESC']],
         limit,
         offset,
@@ -1507,8 +1511,21 @@ export const getRechargesList = async (req, res) => {
       }),
     ]);
 
+    // `needsSubscription` : l'approbation prélèvera d'abord l'abonnement
+    // (première recharge ou abonnement expiré). Le jeton lui-même n'est jamais renvoyé.
+    const data = rows.map((r) => {
+      const d = r.toJSON();
+      if (d.user) {
+        let active = false;
+        if (d.user.TokenAbonemment) { try { jwt.verify(d.user.TokenAbonemment, process.env.JWT_SECRET); active = true; } catch { active = false; } }
+        d.user.needsSubscription = !((Number(d.user.nRecharge) || 0) > 0 && active);
+        delete d.user.TokenAbonemment;
+      }
+      return d;
+    });
+
     const totalAmount = parseFloat(sumResult?.total ?? 0) || 0;
-    res.json({ data: rows, total: count, currentPage, totalPages: Math.ceil(count / limit), totalAmount });
+    res.json({ data, total: count, currentPage, totalPages: Math.ceil(count / limit), totalAmount, subscriptionFee: FRAIS_ABONNEMENT_EC });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
@@ -1685,26 +1702,52 @@ export const approveRecharge = async (req, res) => {
     const user = recharge.user;
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
 
-    const current = parseFloat(user.soldNumber ?? 0);
-    const newBalance = current + parseFloat(recharge.amount);
+    // Verrou : la demande passe de « pending » à « success » une seule fois
+    // (deux clics « Approuver » ne créditent pas deux fois).
+    const [locked] = await TransactionRecharge.update(
+      { status: 'success' },
+      { where: { transactionRechargeId: recharge.transactionRechargeId, status: 'pending' } }
+    );
+    if (!locked) return res.status(400).json({ message: 'Recharge déjà traitée' });
 
-    await Promise.all([
-      recharge.update({ status: 'success' }),
-      user.update({ soldNumber: newBalance }),
-    ]);
+    // Même règle que les recharges en ligne : sans abonnement actif (première
+    // recharge ou abonnement expiré), on prélève d'abord l'abonnement (versé au
+    // compte BIM) et on l'active pour 1 an, puis on crédite le reste.
+    let result;
+    try {
+      result = await creditBim(user.id, parseFloat(recharge.amount), OWNER_EMAIL);
+    } catch (e) {
+      await recharge.update({ status: 'pending' });
+      throw e;
+    }
+    if (!result.ok) {
+      await recharge.update({ status: 'pending' });
+      return res.status(400).json({
+        message: `Montant trop faible : la première recharge doit dépasser les frais d'abonnement (${FRAIS_ABONNEMENT_EC} EC).`,
+      });
+    }
 
+    const { montantCredite, fraisAbonnement, aDejaAbonnement } = result;
+    await recharge.update({ status: 'success', creditedAmount: montantCredite, subscriptionFee: fraisAbonnement });
+    const newBalance = parseFloat(result.userItem.soldNumber ?? 0);
+
+    const body = aDejaAbonnement
+      ? `Votre recharge de ${recharge.amount} EC a été approuvée. Nouveau solde : ${newBalance.toFixed(2)} EC`
+      : `Recharge approuvée : abonnement annuel activé (-${fraisAbonnement} EC) et ${montantCredite} EC crédités. Nouveau solde : ${newBalance.toFixed(2)} EC`;
     try {
       if (user.expoPushToken) {
-        await sendPushNotification(
-          user.expoPushToken,
-          'Recharge approuvée ✅',
-          `Votre recharge de ${recharge.amount} EC a été approuvée. Nouveau solde : ${newBalance.toFixed(2)} EC`,
-          { type: 'recharge_approved', rechargeId: recharge.transactionRechargeId }
-        );
+        await sendPushNotification(user.expoPushToken, 'Recharge approuvée ✅', body,
+          { type: 'recharge_approved', rechargeId: recharge.transactionRechargeId });
       }
     } catch (_) { /* push non bloquant */ }
+    emitToUser(String(user.id), 'notification', { title: 'Recharge approuvée ✅', body });
 
-    return res.status(200).json({ message: `Recharge de ${recharge.amount} EC approuvée`, newBalance, recharge });
+    return res.status(200).json({
+      message: aDejaAbonnement
+        ? `Recharge de ${recharge.amount} EC approuvée`
+        : `Première recharge : abonnement activé (${fraisAbonnement} EC), ${montantCredite} EC crédités`,
+      newBalance, montantCredite, fraisAbonnement, abonnementActive: !aDejaAbonnement, recharge,
+    });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
@@ -1775,13 +1818,29 @@ export const reverseRecharge = async (req, res) => {
     const user = recharge.user;
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
 
+    // On retire exactement ce qui a été crédité (montant moins l'abonnement
+    // pour une première recharge) ; l'abonnement activé par cette recharge est
+    // annulé et ses frais repris au compte BIM.
+    const credited = recharge.creditedAmount != null ? parseFloat(recharge.creditedAmount) : parseFloat(recharge.amount);
+    const fee = parseFloat(recharge.subscriptionFee || 0);
     const current = parseFloat(user.soldNumber ?? 0);
-    const newBalance = Math.max(0, current - parseFloat(recharge.amount));
+    const newBalance = Math.max(0, parseFloat((current - credited).toFixed(2)));
 
-    await Promise.all([
-      recharge.update({ status: 'pending' }),
-      user.update({ soldNumber: newBalance }),
-    ]);
+    const t = await sequelize.transaction();
+    try {
+      await recharge.update({ status: 'pending', creditedAmount: null, subscriptionFee: null }, { transaction: t });
+      const userUpdates = { soldNumber: newBalance, nRecharge: Math.max(0, (Number(user.nRecharge) || 1) - 1) };
+      if (fee > 0) {
+        userUpdates.TokenAbonemment = null;
+        const owner = await User.findOne({ where: { email: OWNER_EMAIL }, transaction: t, lock: t.LOCK.UPDATE });
+        if (owner) await owner.update({ soldNumber: Math.max(0, parseFloat(owner.soldNumber || 0) - fee) }, { transaction: t });
+      }
+      await user.update(userUpdates, { transaction: t });
+      await t.commit();
+    } catch (e) {
+      await t.rollback();
+      throw e;
+    }
 
     try {
       if (user.expoPushToken) {

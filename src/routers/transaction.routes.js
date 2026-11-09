@@ -25,6 +25,7 @@ import {
 
 import { recharge, flexpayCallback, flexpayApproved, flexpayCancel, flexpayDecline, verifyPayment } from '../controllers/recharge.controller.js'
 import authMiddleware from '../../middlewares/auth.middleware.js';
+import requireBimAdmin from '../../middlewares/requireBimAdmin.middleware.js';
 
 const router = express.Router();
 
@@ -52,13 +53,13 @@ router.put("/transactions/:id", updateTransactionPaiement);
 router.delete("/transactions/:id", deleteTransactionPaiement);
 
 // Admin lists (paginated, with period & company filters)
-router.get("/admin/recharges", authMiddleware, getRechargesList);
-router.get("/admin/retraits", authMiddleware, getRetraitsList);
-router.get("/admin/paiements", authMiddleware, getPaiementsList);
+router.get("/admin/recharges", authMiddleware, requireBimAdmin, getRechargesList);
+router.get("/admin/retraits", authMiddleware, requireBimAdmin, getRetraitsList);
+router.get("/admin/paiements", authMiddleware, requireBimAdmin, getPaiementsList);
 
 // Admin approve/reject/reverse recharge
-router.patch("/admin/recharges/:id/approve", authMiddleware, approveRecharge);
-router.patch("/admin/recharges/:id/reject",  authMiddleware, rejectRecharge);
-router.patch("/admin/recharges/:id/reverse", authMiddleware, reverseRecharge);
+router.patch("/admin/recharges/:id/approve", authMiddleware, requireBimAdmin, approveRecharge);
+router.patch("/admin/recharges/:id/reject",  authMiddleware, requireBimAdmin, rejectRecharge);
+router.patch("/admin/recharges/:id/reverse", authMiddleware, requireBimAdmin, reverseRecharge);
 
 export default router;
