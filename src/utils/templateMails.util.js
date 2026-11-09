@@ -1086,3 +1086,65 @@ Ceci est un message automatique.
 </html>
 `;
 };
+
+// E-mail « Mot de passe oublié » : bouton-lien qui ouvre la confirmation (puis
+// l'app passe à « nouveau mot de passe »). Le code à 6 chiffres reste en
+// secours pour les anciennes versions de l'app.
+export const generatePasswordResetEmailTemplate = (username, otp, link, matchCode) => {
+  const name = username && !String(username).startsWith('quick_') ? username : 'cher client';
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Réinitialisation de votre mot de passe BIM NEXT</title>
+</head>
+<body style="margin:0;padding:0;background-color:#F8F9FF;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;">
+<tr><td align="center">
+  <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(0,71,255,0.08);">
+    <tr>
+      <td style="background:linear-gradient(135deg,#0035C5 0%,#0047FF 100%);padding:36px 40px;text-align:center;">
+        <img src="https://bimreseau.com/wp-content/uploads/2024/11/Rectangle-1319.png" alt="BIM NEXT" style="max-width:120px;display:block;margin:0 auto;border-radius:12px;"/>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:40px;">
+        <p style="margin:0 0 6px;font-size:13px;color:#747688;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Bonjour,</p>
+        <h2 style="margin:0 0 20px;font-size:24px;font-weight:700;color:#1A1C1C;">${name}</h2>
+        <p style="font-size:15px;line-height:1.7;color:#434657;margin:0 0 26px;">
+          Vous avez demandé à changer le mot de passe de votre compte <strong style="color:#0047FF;">BIM NEXT</strong>.
+          Touchez le bouton ci-dessous : l'app ouvrira la page pour choisir votre nouveau mot de passe.
+        </p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:22px;">
+        <tr><td align="center">
+          <a href="${link}" style="display:inline-block;background:#0047FF;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:16px 34px;border-radius:30px;">Choisir un nouveau mot de passe</a>
+        </td></tr>
+        </table>
+        ${matchCode ? `<p style="font-size:14px;line-height:1.6;color:#434657;margin:0 0 22px;text-align:center;">Code de vérification affiché dans votre app : <strong style="color:#0047FF;letter-spacing:4px;font-size:18px;">${matchCode}</strong></p>` : ''}
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+        <tr>
+          <td style="background:#FFF8F0;border:1px solid #FFE0C0;border-radius:12px;padding:14px 20px;">
+            <p style="margin:0;font-size:14px;color:#C2410C;"><strong>Valable 30 minutes.</strong> Gardez l'app BIM NEXT ouverte sur l'écran d'attente pendant que vous touchez le lien.</p>
+          </td>
+        </tr>
+        </table>
+        <p style="font-size:13px;color:#747688;line-height:1.6;margin:0 0 10px;">
+          Vous n'êtes pas à l'origine de cette demande ? Ne touchez pas le lien : votre mot de passe actuel reste valable.
+        </p>
+        <p style="font-size:12px;color:#A0A0A0;line-height:1.6;margin:0;">Ancienne version de l'app ? Code à saisir : <strong>${otp}</strong></p>
+      </td>
+    </tr>
+    <tr><td style="padding:0 40px;"><div style="height:1px;background:#E2E2E2;"></div></td></tr>
+    <tr>
+      <td style="padding:24px 40px;text-align:center;">
+        <p style="margin:0 0 6px;font-size:12px;color:#A0A0A0;">&copy; ${new Date().getFullYear()} BIM NEXT &mdash; Tous droits réservés</p>
+        <p style="margin:0;font-size:11px;color:#C4C5DA;">Ceci est un message automatique, merci de ne pas y répondre.</p>
+      </td>
+    </tr>
+  </table>
+</td></tr>
+</table>
+</body>
+</html>`;
+};

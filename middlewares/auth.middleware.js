@@ -86,6 +86,12 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ message: "Unauthorized: User not found" });
     }
 
+    // Compte désactivé par l'ancienne règle « 3 tentatives » (lockUntil
+    // renseigné et expiré) : réactivé automatiquement après le délai.
+    if (!user.isActive && user.lockUntil && new Date(user.lockUntil) <= new Date()) {
+      await user.update({ isActive: true, loginAttempts: 0, lockUntil: null });
+    }
+
     if (!user.isActive) {
       return res.status(409).json({
         message: "This process cannot be completed because your account is not yet activated.",

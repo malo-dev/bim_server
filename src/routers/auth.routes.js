@@ -7,6 +7,9 @@ import {
   setupPassword,
   askPasswordReset,
   resetPassword,
+  resetLinkPage,
+  resetLinkConfirm,
+  resetStatus,
   getAllUsers,
   desactivateUser,
   updateUser,
@@ -60,6 +63,10 @@ router.post('/agent',createAgent);
 router.post('/login', login);
 router.post('/logOut', logOut);
 router.post('/ask-password-reset', askPasswordReset);
+// Lien de l'e-mail « mot de passe oublié » (pages web) — voir auth.controller.
+router.get('/reset-link/:token', resetLinkPage);
+router.post('/reset-link/:token/confirm', resetLinkConfirm);
+router.get('/reset-status/:sessionId', resetStatus);
 router.post('/resetPwd', resetPassword);
 // Liste globale des utilisateurs : utilisée aussi par la recherche de
 // destinataire d'un transfert dans l'app mobile (tout utilisateur connecté,

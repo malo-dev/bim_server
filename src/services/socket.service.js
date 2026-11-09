@@ -72,6 +72,14 @@ export const initSocket = (httpServer) => {
     });
 
     // BIM Transport : suivi temps réel d'une course (statut + position chauffeur)
+    // Mot de passe oublié : l'app (pas encore connectée) attend ici que le
+    // client touche le lien reçu par e-mail (voir auth.controller resetLink*).
+    socket.on('reset:watch', (sessionId) => {
+      if (typeof sessionId === 'string' && /^[a-f0-9]{32}$/.test(sessionId)) {
+        socket.join(`reset_${sessionId}`);
+      }
+    });
+
     socket.on('track_ride', (rideNumber) => {
       if (rideNumber) {
         socket.join(`ride_${rideNumber}`);

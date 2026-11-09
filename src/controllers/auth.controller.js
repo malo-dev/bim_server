@@ -6,11 +6,11 @@ import sequelize from '../config/database.js';
 import { Op } from 'sequelize';
 import crypto from 'crypto';
 import { mailer, sendEmail } from '../utils/sendEmail.utils.js';
-import { emitSOSAlert, emitToUser } from '../services/socket.service.js';
+import { emitSOSAlert, emitToUser, getIO } from '../services/socket.service.js';
 import { sendPushNotification, claimPushToken } from '../services/pushNotification.service.js';
 import path from 'path';
 import fs from 'fs';
-import { generateNewLoginAlertEmailTemplate,generateTransactionPasswordEmailTemplate, generateOtpEmailTemplate, generateOtpEmailTemplateActivated } from '../utils/templateMails.util.js';
+import { generateNewLoginAlertEmailTemplate,generateTransactionPasswordEmailTemplate, generateOtpEmailTemplate, generateOtpEmailTemplateActivated, generatePasswordResetEmailTemplate } from '../utils/templateMails.util.js';
 import { generateAccountNumber,generateAccountNumberAgent} from '../utils/generateAccountNumber.util.js';
 import { generatePassword6Digits,getFormattedDateTime} from '../utils/calculFrais.util.js';
 import { getDateRangeByPeriod } from '../utils/getDateRangeByPeriod.util.js';
@@ -493,12 +493,21 @@ const login = async (req, res) => {
     // tentatives incorrectes (cela bloquait l'Espace Gestion / admin-bim).
     const isAdmin = await isBimAdminUserId(user.id);
 
-    // Compte verrouillé après 3 tentatives incorrectes
-    if (!isAdmin && user.lockUntil && user.lockUntil > new Date()) {
+    // Verrou temporaire après 3 tentatives incorrectes : 15 minutes, puis le
+    // compte se débloque tout seul.
+    if (!isAdmin && user.lockUntil && new Date(user.lockUntil) > new Date()) {
+      const minutes = Math.max(1, Math.ceil((new Date(user.lockUntil) - Date.now()) / 60000));
       return res.status(423).json({
-        message: 'Compte verrouillé après 3 tentatives incorrectes. Veuillez réinitialiser votre mot de passe.',
+        message: `Trop de tentatives incorrectes. Réessayez dans ${minutes} minute${minutes > 1 ? 's' : ''}, ou réinitialisez votre mot de passe.`,
         locked: true,
+        retryInMinutes: minutes,
       });
+    }
+    // Verrou expiré : on le lève. Les comptes désactivés par l'ANCIENNE règle
+    // (désactivation après 3 essais, reconnaissable à lockUntil renseigné) sont
+    // réactivés ; un compte désactivé par un admin n'a pas de lockUntil.
+    if (user.lockUntil && new Date(user.lockUntil) <= new Date()) {
+      await user.update({ loginAttempts: 0, lockUntil: null, ...(user.isActive ? {} : { isActive: true }) });
     }
 
     // Compte inactif
@@ -530,14 +539,15 @@ const login = async (req, res) => {
       const newAttempts = (user.loginAttempts || 0) + 1;
 
       if (newAttempts >= 3) {
+        // Verrou de 15 minutes seulement (le compte n'est plus désactivé).
         await user.update({
-          loginAttempts: newAttempts,
-          isActive: false,
-          lockUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          loginAttempts: 0,
+          lockUntil: new Date(Date.now() + 15 * 60 * 1000),
         });
         return res.status(423).json({
-          message: 'Compte désactivé après 3 tentatives incorrectes. Veuillez réinitialiser votre mot de passe.',
+          message: 'Trop de tentatives incorrectes : compte bloqué pendant 15 minutes. Réessayez ensuite, ou réinitialisez votre mot de passe.',
           locked: true,
+          retryInMinutes: 15,
         });
       }
 
@@ -636,93 +646,216 @@ console.log(req.body)
   }
 };
 
+// ── Mot de passe oublié ─────────────────────────────────────────────────────
+// 1. L'app envoie l'e-mail + un identifiant de session (sessionId) et attend
+//    sur le socket (room reset_<sessionId>). Elle affiche un code à 4 chiffres.
+// 2. Le client touche le lien de l'e-mail → page web qui affiche le même code
+//    et demande « Oui, c'est moi » (empêche qu'un tiers ayant lancé la demande
+//    récupère le compte si le client clique par erreur).
+// 3. Confirmation → le socket prévient l'app (« reset:verified » + grant) qui
+//    ouvre « Crée ton nouveau mot de passe ».
+// 4. /reset-password { grant, newPassword } → mot de passe changé, compte
+//    débloqué / réactivé.
+// Les demandes sont gardées en mémoire 30 min : si le client quitte l'écran
+// (ou si le serveur redémarre), il recommence.
+// Compatibilité : les anciennes versions de l'app utilisent encore
+// { userId, otp, newPassword } avec le code à 6 chiffres de l'e-mail.
+const RESET_TTL_MS = 30 * 60 * 1000;
+const RESET_MAX_TRIES = 5;
+const resetTries = new Map();      // userId → essais de code incorrects
+const resetRequests = new Map();   // token du lien → { userId, sessionId, matchCode, expiresAt, grant }
+
+const pruneResets = () => {
+  const now = Date.now();
+  for (const [k, v] of resetRequests) if (v.expiresAt < now) resetRequests.delete(k);
+};
+
+const publicBaseUrl = (req) =>
+  (process.env.PUBLIC_API_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+
 const askPasswordReset = async (req, res) => {
-  const { email } = req.body;
+  const email = String(req.body?.email ?? '').trim().toLowerCase();
+  const sessionId = /^[a-f0-9]{32}$/.test(String(req.body?.sessionId ?? '')) ? req.body.sessionId : null;
+  if (!/^\S+@\S+\.\S+$/.test(email)) {
+    return res.status(400).json({ message: 'Entrez une adresse e-mail valide.' });
+  }
   try {
-    const user = await User.findOne({ where: { email } });
+    // E-mail principal OU vraie adresse (comptes créés avec le numéro, dont
+    // `email` est un identifiant technique quick_…@bimreseau.com).
+    const user = await User.findOne({
+      where: { [Op.or]: [{ email }, { notificationEmail: email }] },
+      order: [['updatedAt', 'DESC']],
+    });
     if (!user) {
-      return res.status(404).json({ message: 'Utilisateur introuvable' });
-    } else {
-      if (!user.isActive) {
-        return res.status(409).json({
-          message: "Ce compte n'est pas encore activé. Contactez le support BIM NEXT pour l'activer.",
-        });
-      }
+      return res.status(404).json({ message: "Aucun compte BIM NEXT n'utilise cette adresse e-mail. Vérifiez l'adresse saisie." });
+    }
+    // Compte désactivé par un admin (pas par les 3 essais) : pas de réinitialisation.
+    if (!user.isActive && !user.lockUntil) {
+      return res.status(409).json({ message: 'Ce compte est désactivé. Contactez le support BIM NEXT.' });
+    }
 
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      const resetTokenExpiry = Date.now() + 3600000;
+    pruneResets();
+    // Une seule demande en cours par compte : la précédente est annulée.
+    for (const [k, v] of resetRequests) if (v.userId === user.id) resetRequests.delete(k);
 
-          const otp = generateOtp();
-          const otpExpires = new Date(Date.now() + 30 * 60 * 1000);
+    const token = crypto.randomBytes(32).toString('hex');
+    const matchCode = String(Math.floor(1000 + Math.random() * 9000));
+    const otp = generateOtp();
+    resetRequests.set(token, { userId: user.id, sessionId, matchCode, expiresAt: Date.now() + RESET_TTL_MS, grant: null });
+    await user.update({
+      otp,
+      otpExpires: new Date(Date.now() + RESET_TTL_MS),
+      resetPasswordToken: token,
+      resetPasswordExpiresAt: Date.now() + RESET_TTL_MS,
+    });
+    resetTries.delete(user.id);
 
-      await user.update(
-        {
-          otp:otp,
-          otpExpires:otpExpires,
-          resetPasswordToken: resetToken,
-          resetPasswordExpiresAt: resetTokenExpiry,
-        },
-        { where: { id: user.id } }
-      );
-
-      // On attend l'envoi pour pouvoir remonter une vraie erreur si le mail échoue
-      // (avant, la réponse "envoyé" partait avant même de savoir si ça marchait,
-      // ce qui rendait le problème invisible côté utilisateur ET côté logs).
-      const sent = await sendEmail({
-        to: email,
-        subject: 'Réinitialisation de votre mot de passe BIM NEXT',
-        html: generateOtpEmailTemplate(user.username, otp),
-      });
-
-      if (!sent) {
-        return res.status(502).json({
-          message: "L'envoi de l'e-mail a échoué. Réessayez dans quelques instants ou contactez le support.",
-        });
-      }
-
-      res.status(200).json({
-        message: 'Un code otp a été envoyé à votre adresse e-mail.',
-        userId: user.id,
+    const link = `${publicBaseUrl(req)}/api/v1/auth/reset-link/${token}`;
+    const sent = await sendEmail({
+      to: email,
+      subject: 'Réinitialisez votre mot de passe BIM NEXT',
+      html: generatePasswordResetEmailTemplate(user.fullname || user.username, otp, link, sessionId ? matchCode : null),
+    });
+    if (!sent) {
+      resetRequests.delete(token);
+      return res.status(502).json({
+        message: "L'envoi de l'e-mail a échoué. Réessayez dans quelques instants ou contactez le support.",
       });
     }
+
+    return res.status(200).json({
+      message: `E-mail envoyé à ${email}. Touchez le lien qu'il contient (valable 30 minutes).`,
+      userId: user.id,
+      matchCode: sessionId ? matchCode : undefined,
+      expiresInSec: RESET_TTL_MS / 1000,
+    });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-const resetPassword = async (req, res) => {
-  const { userId, otp, newPassword } = req.body;
+
+// Petite page web affichée quand le client touche le lien de l'e-mail.
+const resetPage = (title, body, tone = '#0047FF') => `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/><title>${title} — BIM NEXT</title>
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#F0F4FF;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#1A1C1C;padding:16px;box-sizing:border-box}
+.card{max-width:420px;width:100%;background:#fff;border-radius:24px;padding:32px 24px;box-shadow:0 8px 32px rgba(0,71,255,.12);text-align:center}
+.logo{width:56px;height:56px;border-radius:16px;background:#0047FF;color:#fff;font-weight:800;font-size:24px;display:flex;align-items:center;justify-content:center;margin:0 auto 18px}
+h1{font-size:22px;margin:0 0 10px;color:${tone}}p{font-size:15px;line-height:1.6;color:#434657;margin:0 0 16px}
+.code{font-size:40px;font-weight:800;letter-spacing:12px;color:#0047FF;background:#F0F4FF;border-radius:16px;padding:14px 0;margin:6px 0 20px}
+button{width:100%;height:52px;border:0;border-radius:26px;background:#0047FF;color:#fff;font-size:16px;font-weight:700;cursor:pointer}
+.muted{font-size:13px;color:#747688;margin-top:14px}</style></head>
+<body><div class="card"><div class="logo">B.</div>${body}</div></body></html>`;
+
+// GET /auth/reset-link/:token — étape 2 : vérifier que le code correspond.
+const resetLinkPage = async (req, res) => {
+  pruneResets();
+  const entry = resetRequests.get(String(req.params.token || ''));
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  if (!entry) {
+    return res.status(410).send(resetPage('Lien expiré',
+      `<h1 style="color:#C2410C">Lien expiré ou déjà utilisé</h1><p>Recommencez « Mot de passe oublié » dans l'app BIM NEXT pour recevoir un nouveau lien.</p>`, '#C2410C'));
+  }
+  if (!entry.sessionId) {
+    // Ancienne version de l'app : pas d'attente par socket, on donne le code.
+    const u = await User.findByPk(entry.userId, { attributes: ['otp'] });
+    return res.send(resetPage('Code de réinitialisation',
+      `<h1>Votre code</h1><p>Saisissez ce code dans l'app BIM NEXT :</p><div class="code">${u?.otp ?? '—'}</div><p class="muted">Valable 30 minutes.</p>`));
+  }
+  if (entry.grant) {
+    return res.send(resetPage('Déjà confirmé',
+      `<h1>C'est confirmé ✅</h1><p>Retournez dans l'app BIM NEXT pour choisir votre nouveau mot de passe.</p>`));
+  }
+  return res.send(resetPage('Confirmer la réinitialisation',
+    `<h1>Est-ce bien vous ?</h1>
+     <p>Vérifiez que ce code est <strong>le même</strong> que celui affiché dans votre app BIM NEXT :</p>
+     <div class="code">${entry.matchCode}</div>
+     <form method="POST" action="${req.originalUrl.replace(/\/+$/, '')}/confirm"><button type="submit">Oui, c'est moi — continuer</button></form>
+     <p class="muted">Code différent, ou demande que vous n'avez pas faite ? Fermez cette page : votre mot de passe ne changera pas.</p>`));
+};
+
+// POST /auth/reset-link/:token/confirm — étape 3 : prévenir l'app par socket.
+const resetLinkConfirm = async (req, res) => {
+  pruneResets();
+  const entry = resetRequests.get(String(req.params.token || ''));
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  if (!entry || !entry.sessionId) {
+    return res.status(410).send(resetPage('Lien expiré',
+      `<h1 style="color:#C2410C">Lien expiré ou déjà utilisé</h1><p>Recommencez « Mot de passe oublié » dans l'app BIM NEXT.</p>`, '#C2410C'));
+  }
+  if (!entry.grant) entry.grant = crypto.randomBytes(32).toString('hex');
   try {
-    const user = await User.findOne({ where: { id: userId } });
+    getIO().to(`reset_${entry.sessionId}`).emit('reset:verified', { grant: entry.grant });
+  } catch { /* socket indisponible : l'app ne recevra rien, le client recommencera */ }
+  return res.send(resetPage('Confirmé',
+    `<h1>C'est confirmé ✅</h1><p>Retournez dans l'app BIM NEXT : la page pour choisir votre nouveau mot de passe s'est ouverte.</p>
+     <p class="muted">Vous aviez quitté l'app ? Recommencez « Mot de passe oublié ».</p>`));
+};
 
-    if (!user) {
-      return res.status(400).json({ message: 'Utilisateur introuvable' });
+// GET /auth/reset-status/:sessionId — filet de sécurité du socket : l'app
+// (passée en arrière-plan pour ouvrir l'e-mail) vérifie si le lien a été
+// confirmé. `expired: true` → la demande n'existe plus, il faut recommencer.
+const resetStatus = async (req, res) => {
+  pruneResets();
+  const sid = String(req.params.sessionId || '');
+  if (!/^[a-f0-9]{32}$/.test(sid)) return res.status(400).json({ message: 'Session invalide' });
+  for (const v of resetRequests.values()) {
+    if (v.sessionId === sid) return res.json({ verified: !!v.grant, grant: v.grant || undefined, expired: false });
+  }
+  return res.json({ verified: false, expired: true });
+};
+
+// POST /auth/reset-password — étape 4 : { grant, newPassword } (ou ancien { userId, otp, newPassword }).
+const resetPassword = async (req, res) => {
+  const { userId, otp, newPassword, grant } = req.body;
+  try {
+    let user = null;
+    let grantKey = null;
+
+    if (grant) {
+      pruneResets();
+      for (const [k, v] of resetRequests) {
+        if (v.grant && v.grant === String(grant)) { grantKey = k; user = await User.findByPk(v.userId); break; }
+      }
+      if (!user) return res.status(400).json({ message: 'Demande expirée. Recommencez « Mot de passe oublié ».' });
+    } else {
+      user = await User.findOne({ where: { id: userId } });
+      if (!user) return res.status(400).json({ message: 'Utilisateur introuvable' });
+      // Code à 6 chiffres : obligatoire, non expiré, 5 essais maximum.
+      const tries = resetTries.get(user.id) || 0;
+      if (tries >= RESET_MAX_TRIES) {
+        return res.status(429).json({ message: 'Trop de codes incorrects. Demandez un nouveau code.' });
+      }
+      if (!user.otp || !user.otpExpires || new Date(user.otpExpires) < new Date()) {
+        return res.status(400).json({ message: 'Code expiré. Demandez un nouveau code.' });
+      }
+      if (String(otp ?? '').trim() !== String(user.otp)) {
+        resetTries.set(user.id, tries + 1);
+        if (tries + 1 >= RESET_MAX_TRIES) {
+          await user.update({ otp: null, otpExpires: null });
+          return res.status(429).json({ message: 'Trop de codes incorrects. Demandez un nouveau code.' });
+        }
+        return res.status(400).json({ message: `Code incorrect. Il vous reste ${RESET_MAX_TRIES - tries - 1} essai(s).` });
+      }
     }
 
-    // `resetPassword` ne vérifiait jamais le code OTP envoyé par
-    // `askPasswordReset` — n'importe qui connaissant un userId pouvait donc
-    // changer le mot de passe de n'importe quel compte. On exige maintenant
-    // le code reçu par e-mail, non expiré, avant toute réinitialisation.
-    if (!otp || !user.otp || user.otp !== String(otp) || !user.otpExpires || new Date(user.otpExpires) < new Date()) {
-      return res.status(400).json({ message: 'Code invalide ou expiré.' });
+    const pwd = String(newPassword ?? '');
+    if (pwd.length < 6) {
+      return res.status(400).json({ message: 'Le nouveau mot de passe doit contenir au moins 6 caractères.' });
     }
 
-    // Vérifier la limite de 2 réinitialisations par jour
+    // Limite de 2 réinitialisations par jour.
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     const lastReset = user.lastPasswordResetDate ? new Date(user.lastPasswordResetDate) : null;
-    const isToday = lastReset && lastReset >= today;
-    const resetCount = isToday ? (user.passwordResetCount || 0) : 0;
-
+    const resetCount = lastReset && lastReset >= today ? (user.passwordResetCount || 0) : 0;
     if (resetCount >= 2) {
       return res.status(429).json({
         message: 'Vous avez atteint la limite de 2 réinitialisations de mot de passe par jour. Réessayez demain.',
       });
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
     await user.update({
-      password: hashedPassword,
+      password: await bcrypt.hash(pwd, 10),
       passwordSetByUser: true,
       loginAttempts: 0,
       lockUntil: null,
@@ -731,7 +864,12 @@ const resetPassword = async (req, res) => {
       lastPasswordResetDate: new Date(),
       otp: null,
       otpExpires: null,
+      resetPasswordToken: null,
+      resetPasswordExpiresAt: null,
     });
+    resetTries.delete(user.id);
+    if (grantKey) resetRequests.delete(grantKey);
+    for (const [k, v] of resetRequests) if (v.userId === user.id) resetRequests.delete(k);
 
     return res.status(200).json({ message: 'Mot de passe réinitialisé avec succès', userId: user.id });
   } catch (error) {
@@ -782,13 +920,19 @@ const getAllUsers = async (req, res) => {
 
   
     if (search) {
+      const q = `%${String(search).trim()}%`;
+      // Comptes créés avec le numéro : `email` est un identifiant technique
+      // (quick_…@bimreseau.com), la vraie adresse est dans notificationEmail.
       whereClause[Op.and] = [
         ...(whereClause[Op.and] || []),
         {
           [Op.or]: [
-            { username: { [Op.like]: `%${search}%` } },
-            { email: { [Op.like]: `%${search}%` } },
-             { fullname: { [Op.like]: `%${search}%` } },
+            { username: { [Op.like]: q } },
+            { email: { [Op.like]: q } },
+            { notificationEmail: { [Op.like]: q } },
+            { fullname: { [Op.like]: q } },
+            { telephone: { [Op.like]: q } },
+            { accountNumber: { [Op.like]: q } },
           ],
         },
       ];
@@ -813,10 +957,13 @@ const getAllUsers = async (req, res) => {
       'refreshToken',
       'token',
       'TokenAbonemment',
+      'Token',
+      'randomly',
+      'randomlyPlain',
     ],
   },
       include: [{ model: Role, as: 'role' },{model : BranchTrack, as : 'branchTrack'},{model:Commerce,as:'commerce'}],
-      order: [['createdAt', 'ASC']],
+      order: [['createdAt', 'DESC']],
     };
 
     if (isPaginate) {
@@ -2415,6 +2562,9 @@ export {
   login,
   askPasswordReset,
   resetPassword,
+  resetLinkPage,
+  resetLinkConfirm,
+  resetStatus,
   getAllUsers,
   getUserById,
   updateUserProfile,
