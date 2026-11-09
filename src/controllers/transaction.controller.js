@@ -1736,11 +1736,11 @@ export const approveRecharge = async (req, res) => {
       : `Recharge approuvée : abonnement annuel activé (-${fraisAbonnement} EC) et ${montantCredite} EC crédités. Nouveau solde : ${newBalance.toFixed(2)} EC`;
     try {
       if (user.expoPushToken) {
-        await sendPushNotification(user.expoPushToken, 'Recharge approuvée ✅', body,
+        await sendPushNotification(user.expoPushToken, 'Recharge approuvée', body,
           { type: 'recharge_approved', rechargeId: recharge.transactionRechargeId });
       }
     } catch (_) { /* push non bloquant */ }
-    emitToUser(String(user.id), 'notification', { title: 'Recharge approuvée ✅', body });
+    emitToUser(String(user.id), 'notification', { title: 'Recharge approuvée', body });
 
     return res.status(200).json({
       message: aDejaAbonnement

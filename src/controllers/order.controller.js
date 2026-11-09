@@ -109,7 +109,7 @@ export const createOrder = async (req, res) => {
         const { sendPushNotification } = await import('../services/pushNotification.service.js');
         await sendPushNotification(
           sender.expoPushToken,
-          '✅ Commande reçue',
+          'Commande reçue',
           `Votre commande ${orderNumber} (${grandTotal} EC) a bien été envoyée. Suivez son avancement dans l'app.`
         );
       }
@@ -332,7 +332,7 @@ export const payOrderAtDelivery = async (req, res) => {
 
     // 8. Notification for sender
     await Notification.create(
-      { title: "Paiement réussi ✅", message: `Paiement de ${totalAmount} EC pour la commande ${orderNumber}.`, type: "SUCCESS", userId: sender.id },
+      { title: "Paiement réussi", message: `Paiement de ${totalAmount} EC pour la commande ${orderNumber}.`, type: "SUCCESS", userId: sender.id },
       { transaction: t }
     );
 
@@ -349,7 +349,7 @@ export const payOrderAtDelivery = async (req, res) => {
     emitToUser(String(userId), 'wallet:update', { soldNumber: newSenderBalance });
     // Trigger notification badge refresh
     emitToUser(String(userId), 'notification', {});
-    pushToUser(userId, '✅ Paiement réussi', `Paiement de ${totalAmount} EC effectué. Votre commande ${orderNumber} est livrée. Merci !`, { orderNumber }).catch(() => {});
+    pushToUser(userId, 'Paiement réussi', `Paiement de ${totalAmount} EC effectué. Votre commande ${orderNumber} est livrée. Merci !`, { orderNumber }).catch(() => {});
 
     return res.json({ message: "Paiement réussi, commande livrée", orderNumber, amount: totalAmount });
   } catch (error) {
@@ -502,7 +502,7 @@ export const updateOrder = async (req, res) => {
       // ── Push notification à chaque étape ─────────────────────────────
       try {
         const STATUS_PUSH = {
-          confirmed:  { title: '✅ Commande confirmée',      body: `Votre commande ${order.orderNumber} a été confirmée par l'entreprise.` },
+          confirmed:  { title: 'Commande confirmée',      body: `Votre commande ${order.orderNumber} a été confirmée par l'entreprise.` },
           processing: { title: '🔧 Commande en préparation', body: `Votre commande ${order.orderNumber} est en cours de préparation.`       },
           shipped:    { title: '🚴 Commande expédiée !',     body: `Votre commande ${order.orderNumber} est en route. Préparez-vous à recevoir votre livraison.` },
           delivered:  { title: '📦 Commande livrée !',      body: `Votre commande ${order.orderNumber} a été livrée avec succès. Merci !`   },
@@ -711,7 +711,7 @@ export const prepayOrder = async (req, res) => {
     ], { transaction: t });
 
     await Notification.create(
-      { title: "Paiement réussi ✅", message: `Paiement de ${totalAmount} EC pour la commande ${orderNumber}. Ta livraison arrive.`, type: "SUCCESS", userId: sender.id },
+      { title: "Paiement réussi", message: `Paiement de ${totalAmount} EC pour la commande ${orderNumber}. Ta livraison arrive.`, type: "SUCCESS", userId: sender.id },
       { transaction: t }
     );
 
@@ -721,7 +721,7 @@ export const prepayOrder = async (req, res) => {
     emitToUser(String(userId), 'order:status_updated', { orderNumber, status: orderRows[0].status });
     emitToUser(String(userId), 'wallet:update', { soldNumber: newSenderBalance });
     emitToUser(String(userId), 'notification', {});
-    pushToUser(userId, '✅ Paiement réussi', `Paiement de ${totalAmount} EC pour la commande ${orderNumber}. Ta livraison arrive.`, { orderNumber }).catch(() => {});
+    pushToUser(userId, 'Paiement réussi', `Paiement de ${totalAmount} EC pour la commande ${orderNumber}. Ta livraison arrive.`, { orderNumber }).catch(() => {});
 
     return res.json({ message: "Paiement réussi", orderNumber, amount: totalAmount, soldNumber: newSenderBalance });
   } catch (error) {
