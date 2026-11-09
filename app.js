@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { isBimAdminEmail } from './src/utils/bimAdmin.util.js';
+import idempotency from './middlewares/idempotency.middleware.js';
 import authRoutes from './src/routers/auth.routes.js';
 import roleRoutes from './src/routers/role.routes.js';
 import productRoutes from './src/routers/product.router.js';
@@ -90,7 +91,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Idempotency-Key'],
 };
 
 // ── Middlewares ────────────────────────────────────────────
@@ -101,6 +102,8 @@ app.use(cors(corsOptions));
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+// Connexions faibles : une action renvoyée avec la même clé n'est pas exécutée deux fois.
+app.use(idempotency);
 app.use(morgan('dev'));
 app.use(
   helmet({
