@@ -7,6 +7,20 @@ import { emitToUser, getIO, emitOrderUpdate, emitSOSAlert } from '../services/so
 import { pushToUser } from '../services/pushNotification.service.js';
 import { Op } from 'sequelize';
 
+// Prévient les livreurs qui peuvent prendre cette commande (même règle que
+// getAvailableOrders : livreur de l'entreprise de la commande, ou livreur BIM
+// sans entreprise qui voit tout) : socket pour rafraîchir la liste + push.
+export async function notifyLivreursNewOrder({ orderNumber, companyId, total }) {
+  const where = { status: 'active', isOnline: true };
+  where[Op.or] = companyId ? [{ companyId }, { companyId: null }] : [{ companyId: null }];
+  const livreurs = await Livreur.findAll({ where, attributes: ['livreurId', 'userId'] });
+  for (const l of livreurs) {
+    if (!l.userId) continue;
+    emitToUser(String(l.userId), 'livreur:new_order', { orderNumber });
+    pushToUser(l.userId, '📦 Nouvelle commande à livrer', `Commande ${orderNumber}${total ? ` · ${total} EC` : ''}. Ouvre l'Espace Livreur pour l'accepter.`, { orderNumber }).catch(() => {});
+  }
+}
+
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -449,7 +463,7 @@ export const getAvailableOrders = async (req, res) => {
     if (!livreur) return res.status(403).json({ message: 'Profil livreur actif requis' });
 
     // Commandes pending, non encore assignées, pour la même entreprise que le livreur
-    const where = { status: 'pending', livreurId: null };
+    const where = { status: ['pending', 'confirmed', 'processing'], livreurId: null };
     if (livreur.companyId) where.companyId = livreur.companyId;
 
     const orders = await Order.findAll({
@@ -502,13 +516,15 @@ export const acceptOrder = async (req, res) => {
 
     // Verrou atomique : UPDATE uniquement si livreurId IS NULL
     const [count] = await Order.update(
-      { livreurId: livreur.livreurId, status: 'confirmed', estimatedMinutes: 30 },
-      { where: { orderNumber, livreurId: null, status: 'pending' } }
+      { livreurId: livreur.livreurId, estimatedMinutes: 30 },
+      { where: { orderNumber, livreurId: null, status: ['pending', 'confirmed', 'processing'] } }
     );
 
     if (!count) {
       return res.status(409).json({ message: 'Cette commande a déjà été prise par un autre livreur' });
     }
+    // En attente → confirmée ; une commande déjà avancée par l'admin garde son statut.
+    await Order.update({ status: 'confirmed' }, { where: { orderNumber, status: 'pending' } });
 
     // Notifier le client en temps réel
     const firstOrder = await Order.findOne({
@@ -532,7 +548,7 @@ export const acceptOrder = async (req, res) => {
     });
 
     if (firstOrder?.userId) {
-      const assignedBody = `${firstOrder.livreur?.user?.username ?? 'Un livreur'} a accepté votre commande ${orderNumber} et est en route !`;
+      const assignedBody = `${firstOrder.livreur?.user?.username ?? 'Un livreur'} a accepté votre commande ${orderNumber}. Il va la récupérer puis vous la livrer.`;
       emitToUser(firstOrder.userId, 'notification', {
         title: 'Livreur assigné 🚴',
         body: assignedBody,
@@ -543,6 +559,37 @@ export const acceptOrder = async (req, res) => {
     }
 
     return res.json({ message: 'Commande acceptée', livreurId: livreur.livreurId });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+};
+
+// PUT /livreur/orders/pickup/:orderNumber — Le livreur a récupéré la commande
+// et part chez le client : « En route » (étape 3 du suivi client).
+export const pickupOrder = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { orderNumber } = req.params;
+    const livreur = await Livreur.findOne({ where: { userId, status: 'active' } });
+    if (!livreur) return res.status(403).json({ message: 'Profil livreur actif requis' });
+
+    const [count] = await Order.update(
+      { status: 'shipped' },
+      { where: { orderNumber, livreurId: livreur.livreurId, status: ['confirmed', 'processing'] } }
+    );
+    if (!count) {
+      return res.status(400).json({ message: "Commande introuvable, pas à vous, ou déjà en route / livrée." });
+    }
+
+    const first = await Order.findOne({ where: { orderNumber } });
+    const payload = { orderNumber, status: 'shipped', updatedAt: new Date().toISOString() };
+    emitOrderUpdate(orderNumber, payload);
+    if (first?.userId) {
+      emitToUser(String(first.userId), 'order:status_updated', payload);
+      const toPay = first.paymentStatus === 'paid' ? '' : ' Prépare le paiement pour le livreur.';
+      pushToUser(first.userId, '🚴 Commande en route !', `Ton livreur a récupéré la commande ${orderNumber} et arrive.${toPay}`, { orderNumber }).catch(() => {});
+    }
+    return res.json({ message: 'Commande en route' });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur', error: error.message });
   }
@@ -580,6 +627,10 @@ export const cancelDelivery = async (req, res) => {
       status: 'pending',
       livreur: null,
     });
+    // Le client voit tout de suite que la commande attend un nouveau livreur.
+    emitToUser(String(existing.userId), 'order:status_updated', { orderNumber, status: 'pending' });
+    pushToUser(existing.userId, '🔄 Nouveau livreur en recherche', `Le livreur s'est désisté pour la commande ${orderNumber}. On en cherche un autre.`, { orderNumber }).catch(() => {});
+    notifyLivreursNewOrder({ orderNumber, companyId: existing.companyId }).catch(() => {});
 
     return res.json({ message: 'Livraison annulée, commande de nouveau disponible' });
   } catch (error) {

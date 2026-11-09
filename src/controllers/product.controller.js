@@ -435,6 +435,8 @@ const norm = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0
 const hasAny = (text, words) => { const t = norm(text); return words.some((w) => t.includes(norm(w))); };
 
 export const classifyBimProduct = (p) => {
+  // Catégorie choisie explicitement dans l'admin : prioritaire.
+  if (p.bimType && BIM_TYPES[p.bimType]) return p.bimType;
   const sectorName = p.company?.category?.name || '';
   const cats = (p.categories || []).map((c) => c.name);
   for (const [type, rule] of Object.entries(BIM_TYPES)) {
@@ -484,12 +486,13 @@ export const getBimCatalogue = async (req, res) => {
       const t = classifyBimProduct(p);
       if (!t || (type && t !== type)) continue;
       if (String(p.availability || '').toLowerCase() === 'indisponible') continue;
-      const price = parseFloat(p.price || 0);
-      const pct = parseFloat(p.reduction || 0);
-      const effectivePrice = pct > 0 && pct <= 100 ? +(price * (1 - pct / 100)).toFixed(2) : price;
+      const effectivePrice = effectivePriceOf(p);
       const sectorWords = (BIM_TYPES[t].sector || []);
-      // Sous-catégorie : première catégorie produit qui n'est pas juste le nom du type.
-      const sub = (p.categories || []).map((c) => c.name).find((n) => !sectorWords.some((w) => norm(n) === norm(w))) || null;
+      // Sous-catégorie : celle saisie dans l'admin, sinon la première catégorie
+      // produit qui n'est pas juste le nom du type.
+      const sub = (p.bimSub && String(p.bimSub).trim())
+        || (p.categories || []).map((c) => c.name).find((n) => !sectorWords.some((w) => norm(n) === norm(w)))
+        || null;
       items.push({ ...p, type: t, sub, effectivePrice });
     }
 
@@ -498,5 +501,168 @@ export const getBimCatalogue = async (req, res) => {
     return res.status(200).json({ data: items, total: items.length, subs, type: type || null });
   } catch (error) {
     return res.status(500).json({ message: 'Erreur lors de la récupération du catalogue', error: error.message });
+  }
+};
+
+/** Prix payé par le client : prix catalogue moins la réduction (%), arrondi au centime. */
+export function effectivePriceOf(p) {
+  const price = parseFloat(p?.price || 0);
+  const pct = parseFloat(p?.reduction || 0);
+  return pct > 0 && pct <= 100 ? +(price * (1 - pct / 100)).toFixed(2) : +price.toFixed(2);
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Administration du catalogue BIM NEXT (admin-bim, rôle BIM uniquement)
+ *   GET    /product/bim-admin?type=&search=   → produits eau/gaz/carburant (même indisponibles)
+ *   POST   /product/bim-admin                 → créer (multipart : champs + image)
+ *   PUT    /product/bim-admin/:id             → modifier (multipart : champs + image facultative)
+ *   DELETE /product/delete/:id                → supprimer (route existante)
+ * Un produit sans entreprise est vendu par BIM NEXT : le paiement en EC va au
+ * compte BIM (voir prepayOrder), et la commande est visible par les livreurs BIM.
+ * ──────────────────────────────────────────────────────────────────────── */
+const AVAILABLE = 'disponible';
+const UNAVAILABLE = 'indisponible';
+
+const removeUploaded = (file) => {
+  if (file?.path && fs.existsSync(file.path)) { try { fs.unlinkSync(file.path); } catch { /* ignore */ } }
+};
+
+// Lit et valide les champs du formulaire admin (multipart → chaînes).
+// `partial` : en modification, seuls les champs présents sont changés.
+const readBimFields = async (body, { partial }) => {
+  const out = {};
+  const has = (k) => body[k] !== undefined;
+  const str = (k) => String(body[k] ?? '').trim();
+
+  if (!partial || has('name')) {
+    if (!str('name')) return { error: 'Le titre du produit est obligatoire.' };
+    out.name = str('name').slice(0, 200);
+  }
+  if (!partial || has('bimType')) {
+    const t = norm(body.bimType);
+    if (!BIM_TYPES[t]) return { error: 'Catégorie invalide : choisissez eau, gaz ou carburant.' };
+    out.bimType = t;
+  }
+  if (!partial || has('price')) {
+    const price = Number(String(body.price ?? '').replace(',', '.'));
+    if (!Number.isFinite(price) || price <= 0) return { error: 'Le prix doit être un nombre supérieur à 0.' };
+    out.price = +price.toFixed(2);
+  }
+  if (has('reduction')) {
+    if (str('reduction') === '') out.reduction = null;
+    else {
+      const r = Number(body.reduction);
+      if (!Number.isInteger(r) || r < 0 || r > 100) return { error: 'La réduction doit être un entier entre 0 et 100.' };
+      out.reduction = r;
+    }
+  }
+  if (has('description')) out.description = str('description') || null;
+  if (has('bimSub')) out.bimSub = str('bimSub').slice(0, 100) || null;
+  if (has('unityMesure')) out.unityMesure = str('unityMesure') || null;
+  if (has('warning')) out.Warning = str('warning').slice(0, 400) || null;
+  if (has('available')) out.availability = (body.available === true || body.available === 'true') ? AVAILABLE : UNAVAILABLE;
+  if (has('currencyId')) {
+    out.currencyId = str('currencyId') ? Number(body.currencyId) : null;
+    if (out.currencyId !== null) {
+      if (!Number.isInteger(out.currencyId)) return { error: 'Devise invalide.' };
+      if (!(await Currency.findByPk(out.currencyId))) return { error: "Cette devise n'existe pas." };
+    }
+  }
+  if (has('companyId')) {
+    out.companyId = str('companyId') ? Number(body.companyId) : null;
+    if (out.companyId !== null) {
+      if (!Number.isInteger(out.companyId)) return { error: 'Entreprise invalide.' };
+      if (!(await Company.findByPk(out.companyId))) return { error: "Cette entreprise n'existe pas." };
+    }
+  }
+  return { fields: out };
+};
+
+const BIM_INCLUDE = [
+  { model: Currency, as: 'currency' },
+  { model: Category, as: 'categories', through: { attributes: [] } },
+  {
+    model: Company, as: 'company', attributes: ['companyId', 'name', 'businessId', 'logo'], required: false,
+    include: [{ model: BusinessCategory, as: 'category', attributes: ['businessId', 'name'] }],
+  },
+];
+
+const toBimItem = (row) => {
+  const p = row.toJSON ? row.toJSON() : row;
+  return {
+    ...p,
+    type: classifyBimProduct(p),
+    sub: p.bimSub || null,
+    effectivePrice: effectivePriceOf(p),
+    available: String(p.availability || '').toLowerCase() !== UNAVAILABLE,
+  };
+};
+
+export const getBimAdminProducts = async (req, res) => {
+  try {
+    const type = norm(req.query.type || '');
+    if (type && !BIM_TYPES[type]) return res.status(400).json({ message: 'Type inconnu. Utilisez eau, gaz ou carburant.' });
+    const search = String(req.query.search || '').trim();
+    const where = search ? { [Op.or]: [{ name: { [Op.like]: `%${search}%` } }, { description: { [Op.like]: `%${search}%` } }] } : {};
+    const rows = await Product.findAll({ where, include: BIM_INCLUDE, order: [['createdAt', 'DESC']] });
+    const all = rows.map(toBimItem).filter((p) => p.type);
+    const counts = { eau: 0, gaz: 0, carburant: 0 };
+    all.forEach((p) => { counts[p.type] += 1; });
+    const items = type ? all.filter((p) => p.type === type) : all;
+    return res.status(200).json({ data: items, total: items.length, counts });
+  } catch (error) {
+    return res.status(500).json({ message: 'Erreur lors de la récupération du catalogue', error: error.message });
+  }
+};
+
+export const createBimProduct = async (req, res) => {
+  try {
+    const { error, fields } = await readBimFields(req.body, { partial: false });
+    if (error) { removeUploaded(req.file); return res.status(400).json({ message: error }); }
+
+    const duplicate = await Product.findOne({ where: { name: fields.name, bimType: fields.bimType, companyId: fields.companyId ?? null } });
+    if (duplicate) { removeUploaded(req.file); return res.status(409).json({ message: 'Un produit avec ce titre existe déjà dans cette catégorie.' }); }
+
+    let imageUrl = null;
+    if (req.file) {
+      await compressImageFile(req.file.path);
+      imageUrl = `/images/${req.file.filename}`;
+    }
+
+    const product = await Product.create({ availability: AVAILABLE, qty: 0, ...fields, imageUrl });
+
+    await emitStandaloneProductsUpdated();
+    const full = await Product.findByPk(product.productId, { include: BIM_INCLUDE });
+    return res.status(201).json({ message: 'Produit créé', data: toBimItem(full) });
+  } catch (error) {
+    removeUploaded(req.file);
+    return res.status(500).json({ message: 'Erreur lors de la création du produit', error: error.message });
+  }
+};
+
+export const updateBimProduct = async (req, res) => {
+  try {
+    const product = await Product.findByPk(req.params.id);
+    if (!product) { removeUploaded(req.file); return res.status(404).json({ message: 'Produit introuvable' }); }
+
+    const { error, fields } = await readBimFields(req.body, { partial: true });
+    if (error) { removeUploaded(req.file); return res.status(400).json({ message: error }); }
+
+    if (req.file) {
+      await compressImageFile(req.file.path);
+      if (product.imageUrl && product.imageUrl.startsWith('/images/')) {
+        const old = path.join('public', product.imageUrl.replace('/images/', 'images/'));
+        if (fs.existsSync(old)) { try { fs.unlinkSync(old); } catch { /* ignore */ } }
+      }
+      fields.imageUrl = `/images/${req.file.filename}`;
+    }
+
+    await product.update(fields);
+    await emitStandaloneProductsUpdated();
+    const full = await Product.findByPk(product.productId, { include: BIM_INCLUDE });
+    return res.status(200).json({ message: 'Produit modifié', data: toBimItem(full) });
+  } catch (error) {
+    removeUploaded(req.file);
+    return res.status(500).json({ message: 'Erreur lors de la modification du produit', error: error.message });
   }
 };

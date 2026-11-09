@@ -14,6 +14,7 @@ import {
   getAvailableOrders,
   acceptOrder,
   cancelDelivery,
+  pickupOrder,
   getMyDeliveries,
   getMyEarnings,
   getMyRatings,
@@ -25,6 +26,7 @@ import {
   adminCreateLivreur,
 } from '../controllers/livreur.controller.js';
 import authMiddleware from '../../middlewares/auth.middleware.js';
+import requireBimAdmin from '../../middlewares/requireBimAdmin.middleware.js';
 
 // Multer dédié livreur — 300KB par image
 const storage = multer.diskStorage({
@@ -66,7 +68,7 @@ router.get('/public/:userId', authMiddleware, getLivreurPublicProfile);
 
 // Admin entreprise
 router.get('/company/candidates', authMiddleware, getCompanyLivreurs);
-router.put('/:id/status', authMiddleware, updateLivreurStatus);
+router.put('/:id/status', authMiddleware, requireBimAdmin, updateLivreurStatus);
 
 // Notation (user)
 router.post('/:id/rate', authMiddleware, rateLivreur);
@@ -79,6 +81,7 @@ router.get('/orders/available', authMiddleware, getAvailableOrders);
 router.get('/orders/mine',      authMiddleware, getMyDeliveries);
 router.put('/orders/accept/:orderNumber',  authMiddleware, acceptOrder);
 router.put('/orders/cancel/:orderNumber',  authMiddleware, cancelDelivery);
+router.put('/orders/pickup/:orderNumber',  authMiddleware, pickupOrder);
 
 // Revenus / commissions
 router.get('/earnings', authMiddleware, getMyEarnings);
@@ -89,8 +92,8 @@ router.get('/sos/alerts',         authMiddleware, getSOSAlerts);
 router.put('/sos/:sosId/resolve', authMiddleware, resolveSOS);
 
 // ── Admin BIM (super admin uniquement) ────────────────────────────────────────
-router.get('/admin/all',              authMiddleware, adminGetAllLivreurs);
-router.post('/admin/create',          authMiddleware, adminCreateLivreur);
-router.put('/admin/:id/status',       authMiddleware, adminUpdateLivreurStatus);
+router.get('/admin/all',              authMiddleware, requireBimAdmin, adminGetAllLivreurs);
+router.post('/admin/create',          authMiddleware, requireBimAdmin, adminCreateLivreur);
+router.put('/admin/:id/status',       authMiddleware, requireBimAdmin, adminUpdateLivreurStatus);
 
 export default router;

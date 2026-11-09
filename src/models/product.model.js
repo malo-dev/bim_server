@@ -119,6 +119,18 @@ const Product = sequelize.define(
       defaultValue: false,
     },
 
+    // Catalogue BIM NEXT : catégorie explicite (eau / gaz / carburant). NULL =
+    // produit classé comme avant (secteur de l'entreprise, catégories, nom).
+    bimType: {
+      type: DataTypes.ENUM('eau', 'gaz', 'carburant'),
+      allowNull: true,
+    },
+    // Sous-catégorie affichée en puce dans l'app (ex. « Bonbonne 20 L »).
+    bimSub: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+
     // Prix "à discuter" : affiché à la place du prix chiffré sur l'app.
     priceOnRequest: {
       type: DataTypes.BOOLEAN,

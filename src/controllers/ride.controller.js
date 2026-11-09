@@ -2,6 +2,13 @@ import { Ride, Chauffeur, User, Transaction, RideTier } from '../models/index.js
 import { Op } from 'sequelize';
 import sequelize from '../config/database.js';
 import { getIO, emitToUser } from '../services/socket.service.js';
+import { pushToUser } from '../services/pushNotification.service.js';
+import { isBimAdminUserId } from '../utils/bimAdmin.util.js';
+
+// Statuts d'une course « vivante » (chauffeur assigné, pas encore terminée).
+const LIVE = ['accepted', 'arriving', 'in_progress'];
+// Une recherche de chauffeur abandonnée depuis plus longtemps n'est plus proposée.
+const SEARCH_TTL_MS = 20 * 60 * 1000;
 
 /* ─── Tarification ────────────────────────────────────────────────────────
  * Les gammes (base + prix/km) sont éditables depuis admin-bim, stockées en DB
@@ -102,9 +109,22 @@ export const requestRide = async (req, res) => {
       return res.status(400).json({ message: 'pickupAddress et destinationAddress requis' });
     }
 
+    // Une seule course à la fois : si une course est déjà en route, on la renvoie.
+    const live = await Ride.findOne({ where: { userId, status: LIVE }, order: [['createdAt', 'DESC']] });
+    if (live) {
+      return res.status(409).json({ message: 'Tu as déjà une course en cours.', code: 'RIDE_IN_PROGRESS', rideNumber: live.rideNumber });
+    }
+    // Recherches précédentes jamais abouties : annulées pour ne pas les laisser traîner.
+    const stale = await Ride.findAll({ where: { userId, status: 'searching' } });
+    for (const r of stale) {
+      clearOffer(r.rideId);
+      await r.update({ status: 'cancelled', cancelReason: 'Remplacée par une nouvelle demande' });
+    }
+
     const TIERS = await getTiers();
-    const tierKey = TIERS[vehicleTier] ? vehicleTier : 'eco';
+    const tierKey = TIERS[vehicleTier] ? vehicleTier : Object.keys(TIERS)[0];
     const tierInfo = TIERS[tierKey];
+    if (!tierInfo) return res.status(503).json({ message: 'Aucune gamme de véhicule disponible pour le moment.' });
     const distanceKm = computeDistance(req.body);
     const durationMin = Math.max(3, Math.round(distanceKm * 2.4));
     const estimatedFare = parseFloat((tierInfo.base + tierInfo.perKm * distanceKm).toFixed(2));
@@ -158,7 +178,7 @@ async function sendOfferToChauffeur(ride, chauffeur) {
     emitRideUpdate(ride.rideNumber, { status: 'searching', reason: 'Le chauffeur n\'a pas répondu' });
   }, OFFER_TIMEOUT_MS);
 
-  pendingOffers.set(ride.rideId, { chauffeurId: chauffeur.chauffeurId, timer });
+  pendingOffers.set(ride.rideId, { chauffeurId: chauffeur.chauffeurId, timer, expiresAt: Date.now() + OFFER_TIMEOUT_MS });
 
   emitToUser(chauffeur.userId, 'ride:incoming', {
     rideNumber: ride.rideNumber,
@@ -180,30 +200,38 @@ export const getAvailableChauffeurs = async (req, res) => {
     if (!ride) return res.status(404).json({ message: 'Course introuvable' });
     if (ride.status !== 'searching') return res.status(400).json({ message: 'Cette course n\'est plus en recherche de chauffeur' });
 
-    let candidates = await Chauffeur.findAll({
-      where: { status: 'active', isOnline: true, isAvailable: true, vehicleTier: ride.vehicleTier },
-      include: [{ model: User, as: 'user', attributes: ['id', 'username'] }],
+    // TOUS les chauffeurs en ligne et libres (le passager choisit) : ceux de
+    // la gamme demandée d'abord, puis par distance du point de prise en charge.
+    const candidates = await Chauffeur.findAll({
+      where: { status: 'active', isOnline: true, isAvailable: true },
+      include: [{ model: User, as: 'user', attributes: ['id', 'username', 'fullname', 'imageUrl'] }],
     });
-    if (candidates.length === 0) {
-      candidates = await Chauffeur.findAll({
-        where: { status: 'active', isOnline: true, isAvailable: true },
-        include: [{ model: User, as: 'user', attributes: ['id', 'username'] }],
-      });
-    }
 
     const hasPickupCoords = ride.pickupLat && ride.pickupLng;
+    const offer = pendingOffers.get(ride.rideId);
     const list = candidates.map((c) => {
       const distanceKm = hasPickupCoords && c.latitude && c.longitude
         ? haversineKm(Number(ride.pickupLat), Number(ride.pickupLng), Number(c.latitude), Number(c.longitude))
         : null;
       return {
         chauffeurId: c.chauffeurId,
-        username: c.user?.username ?? 'Chauffeur',
+        username: c.fullname || c.user?.fullname || c.user?.username || 'Chauffeur',
+        avatarUrl: c.avatarUrl || c.user?.imageUrl || null,
         vehicleTier: c.vehicleTier,
+        sameTier: c.vehicleTier === ride.vehicleTier,
+        vehicle: [c.vehicleMake, c.vehicleModel].filter(Boolean).join(' ') || null,
+        vehicleColor: c.vehicleColor || null,
+        plateNumber: c.plateNumber || null,
+        seats: c.seats,
         rating: c.rating,
+        totalRides: c.totalRides,
         distanceKm: distanceKm !== null ? parseFloat(distanceKm.toFixed(2)) : null,
+        // ~2,5 min/km en ville, 2 min minimum.
+        etaMin: distanceKm !== null ? Math.max(2, Math.round(distanceKm * 2.5)) : null,
+        pending: offer?.chauffeurId === c.chauffeurId,
       };
     }).sort((a, b) => {
+      if (a.sameTier !== b.sameTier) return a.sameTier ? -1 : 1;
       if (a.distanceKm === null) return 1;
       if (b.distanceKm === null) return -1;
       return a.distanceKm - b.distanceKm;
@@ -230,8 +258,10 @@ export const offerRideToChauffeur = async (req, res) => {
 
     clearOffer(ride.rideId);
     await sendOfferToChauffeur(ride, chauffeur);
+    // App du chauffeur en arrière-plan : le push le réveille.
+    pushToUser(chauffeur.userId, '🚖 Nouvelle course', `${ride.pickupAddress} → ${ride.destinationAddress} · ${ride.estimatedFare} EC. Ouvre l'app pour accepter.`, { rideNumber: ride.rideNumber }).catch(() => {});
 
-    return res.status(200).json({ message: 'Offre envoyée au chauffeur' });
+    return res.status(200).json({ message: 'Offre envoyée au chauffeur', expiresInSec: OFFER_TIMEOUT_MS / 1000 });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
@@ -254,9 +284,17 @@ export const acceptRide = async (req, res) => {
     }
     clearOffer(ride.rideId);
 
+    // Mise à jour conditionnelle : si la course a été annulée ou prise entre-temps, on n'écrase rien.
+    const [count] = await Ride.update(
+      { chauffeurId: chauffeur.chauffeurId, status: 'accepted', pickupCode: genPickupCode() },
+      { where: { rideId: ride.rideId, status: 'searching' } }
+    );
+    if (!count) return res.status(409).json({ message: 'Cette course n\'est plus disponible' });
     await chauffeur.update({ isAvailable: false });
-    await ride.update({ chauffeurId: chauffeur.chauffeurId, status: 'accepted', pickupCode: genPickupCode() });
-    emitRideUpdate(ride.rideNumber, { status: 'accepted', chauffeurId: chauffeur.chauffeurId });
+    await ride.reload();
+    emitRideUpdate(ride.rideNumber, { rideNumber: ride.rideNumber, status: 'accepted', chauffeurId: chauffeur.chauffeurId });
+    emitToUser(ride.userId, 'ride:status_updated', { rideNumber: ride.rideNumber, status: 'accepted' });
+    pushToUser(ride.userId, '🚖 Chauffeur trouvé', `${chauffeur.fullname || 'Ton chauffeur'} a accepté ta course et arrive.${chauffeur.plateNumber ? ` Plaque : ${chauffeur.plateNumber}.` : ''}`, { rideNumber: ride.rideNumber }).catch(() => {});
 
     return res.status(200).json({ message: 'Course acceptée', data: ride });
   } catch (error) {
@@ -297,7 +335,9 @@ export const arrivedRide = async (req, res) => {
     if (ride.status !== 'accepted') return res.status(400).json({ message: 'Statut de course invalide' });
 
     await ride.update({ status: 'arriving' });
-    emitRideUpdate(ride.rideNumber, { status: 'arriving' });
+    emitRideUpdate(ride.rideNumber, { rideNumber: ride.rideNumber, status: 'arriving' });
+    emitToUser(ride.userId, 'ride:status_updated', { rideNumber: ride.rideNumber, status: 'arriving' });
+    pushToUser(ride.userId, '📍 Ton chauffeur est là', `Il t'attend au point de prise en charge. Donne-lui ton code : ${ride.pickupCode}.`, { rideNumber: ride.rideNumber }).catch(() => {});
     return res.status(200).json({ message: 'Arrivée signalée', data: ride });
   } catch (error) {
     return res.status(500).json({ message: error.message });
@@ -321,12 +361,22 @@ export const startRide = async (req, res) => {
     }
     if (!['accepted', 'arriving'].includes(ride.status)) return res.status(400).json({ message: 'Statut de course invalide' });
 
+    // Le chauffeur démarre avec le code que le passager lui donne : preuve que
+    // le bon passager est monté. Le passager, lui, peut démarrer directement.
+    if (isAssignedChauffeur && !isPassenger) {
+      const code = String(req.body?.pickupCode ?? '').trim();
+      if (!ride.pickupCode || code !== String(ride.pickupCode)) {
+        return res.status(400).json({ message: 'Code incorrect. Demande au passager le code affiché dans son app.' });
+      }
+    }
+
     // On repart de 0 km au démarrage réel de la course : `distanceKm` servait
     // jusqu'ici à l'estimation (pickup → destination à vol d'oiseau), le
     // compteur en temps réel (voir chauffeur.controller.updateLocation) part
     // du point de prise en charge, pas de l'estimation de départ.
     await ride.update({ status: 'in_progress', distanceKm: 0 });
-    emitRideUpdate(ride.rideNumber, { status: 'in_progress' });
+    emitRideUpdate(ride.rideNumber, { rideNumber: ride.rideNumber, status: 'in_progress' });
+    emitToUser(ride.userId, 'ride:status_updated', { rideNumber: ride.rideNumber, status: 'in_progress' });
     return res.status(200).json({ message: 'Course démarrée', data: ride });
   } catch (error) {
     return res.status(500).json({ message: error.message });
@@ -344,9 +394,21 @@ export const completeRideByChauffeur = async (req, res) => {
     if (!ride) return res.status(404).json({ message: 'Course introuvable' });
     if (ride.status !== 'in_progress') return res.status(400).json({ message: 'Statut de course invalide' });
 
-    await completeRideInternal(ride);
-    emitRideUpdate(ride.rideNumber, { status: 'completed' });
-    return res.status(200).json({ message: 'Course terminée', data: ride });
+    // Avant : une erreur de paiement était avalée et la course annoncée
+    // « terminée » alors qu'elle restait en cours en base.
+    const { fare, paymentStatus } = await completeRideInternal(ride);
+    const payload = { rideNumber: ride.rideNumber, status: 'completed', finalFare: fare, paymentStatus };
+    emitRideUpdate(ride.rideNumber, payload);
+    emitToUser(ride.userId, 'ride:status_updated', payload);
+    pushToUser(ride.userId, '🏁 Course terminée',
+      paymentStatus === 'paid'
+        ? `${fare} EC payés depuis ton solde. Merci d'avoir roulé avec BIM NEXT !`
+        : `Solde insuffisant : règle ${fare} EC en espèces au chauffeur.`,
+      { rideNumber: ride.rideNumber }).catch(() => {});
+    if (paymentStatus === 'paid') {
+      pushToUser(chauffeur.userId, '💰 Paiement reçu', `${fare} EC crédités sur ton solde pour la course.`, { rideNumber: ride.rideNumber }).catch(() => {});
+    }
+    return res.status(200).json({ message: 'Course terminée', data: ride, finalFare: fare, paymentStatus });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
@@ -367,9 +429,44 @@ export const cancelRideByChauffeur = async (req, res) => {
 
     await chauffeur.update({ isAvailable: true });
     await ride.update({ status: 'cancelled', cancelReason: req.body?.reason || 'Annulée par le chauffeur' });
-    emitRideUpdate(ride.rideNumber, { status: 'cancelled', reason: ride.cancelReason });
+    emitRideUpdate(ride.rideNumber, { rideNumber: ride.rideNumber, status: 'cancelled', reason: ride.cancelReason });
+    emitToUser(ride.userId, 'ride:status_updated', { rideNumber: ride.rideNumber, status: 'cancelled', reason: ride.cancelReason });
+    pushToUser(ride.userId, '❌ Course annulée', 'Le chauffeur a annulé la course. Tu peux en commander une autre.', { rideNumber: ride.rideNumber }).catch(() => {});
 
     return res.status(200).json({ message: 'Course annulée' });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+// ── Offre en attente pour le chauffeur connecté ─────────────────────────────
+// Filet de sécurité de l'événement socket « ride:incoming » : si l'app était
+// fermée (ouverte depuis le push), l'offre est récupérée ici.
+export const getChauffeurPendingOffer = async (req, res) => {
+  try {
+    const chauffeur = await Chauffeur.findOne({ where: { userId: req.user?.id } });
+    if (!chauffeur) return res.status(404).json({ message: 'Profil chauffeur introuvable' });
+
+    for (const [rideId, state] of pendingOffers.entries()) {
+      if (state.chauffeurId !== chauffeur.chauffeurId) continue;
+      const left = Math.floor((state.expiresAt - Date.now()) / 1000);
+      if (left <= 1) continue;
+      const ride = await Ride.findByPk(rideId);
+      if (!ride || ride.status !== 'searching') continue;
+      return res.status(200).json({
+        data: {
+          rideNumber: ride.rideNumber,
+          pickupAddress: ride.pickupAddress,
+          destinationAddress: ride.destinationAddress,
+          distanceKm: ride.distanceKm,
+          durationMin: ride.durationMin,
+          estimatedFare: ride.estimatedFare,
+          vehicleTier: ride.vehicleTier,
+          expiresInSec: left,
+        },
+      });
+    }
+    return res.status(200).json({ data: null });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
@@ -396,6 +493,10 @@ export const getChauffeurActiveRide = async (req, res) => {
 async function completeRideInternal(ride) {
   const t = await sequelize.transaction();
   try {
+    // Verrou sur la course : deux clics « Terminer » ne débitent pas deux fois.
+    const fresh = await Ride.findByPk(ride.rideId, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!fresh || fresh.status !== 'in_progress') throw new Error('Cette course n\'est plus en cours');
+    ride = fresh;
     const passenger = await User.findByPk(ride.userId, { transaction: t, lock: t.LOCK.UPDATE });
     const chauffeur = await Chauffeur.findByPk(ride.chauffeurId, { transaction: t });
 
@@ -432,24 +533,58 @@ async function completeRideInternal(ride) {
 
     await ride.update({ status: 'completed', finalFare: fare, paymentStatus }, { transaction: t });
     await t.commit();
+    return { fare, paymentStatus };
   } catch (err) {
     await t.rollback();
     console.error('[ride complete] erreur:', err.message);
+    throw err;
   }
 }
 
 // ── Détail d'une course ─────────────────────────────────────────────────────
+// Visible uniquement par le passager, le chauffeur assigné et les admins BIM.
+// Le code d'accès du chauffeur n'est jamais renvoyé (il permettait de se
+// connecter à l'Espace Chauffeur), et le code de prise en charge n'est montré
+// qu'au passager (le chauffeur doit le lui demander pour démarrer).
+const CHAUFFEUR_PUBLIC = ['chauffeurId', 'userId', 'fullname', 'telephone', 'vehicleMake', 'vehicleModel', 'vehicleColor', 'plateNumber', 'vehicleTier', 'seats', 'rating', 'ratingCount', 'totalRides', 'latitude', 'longitude', 'avatarUrl'];
+
+const loadRide = (where) => Ride.findOne({
+  where,
+  include: [
+    { model: Chauffeur, as: 'chauffeur', attributes: CHAUFFEUR_PUBLIC, include: [{ model: User, as: 'user', attributes: ['id', 'username', 'fullname', 'imageUrl'] }] },
+    { model: User, as: 'passenger', attributes: ['id', 'username', 'fullname', 'imageUrl', 'telephone'] },
+  ],
+  order: [['createdAt', 'DESC']],
+});
+
 export const getRideByNumber = async (req, res) => {
   try {
-    const ride = await Ride.findOne({
-      where: { rideNumber: req.params.rideNumber },
-      include: [
-        { model: Chauffeur, as: 'chauffeur', include: [{ model: User, as: 'user', attributes: ['id', 'username', 'imageUrl'] }] },
-        { model: User, as: 'passenger', attributes: ['id', 'username', 'imageUrl', 'telephone'] },
-      ],
-    });
+    const userId = req.user?.id;
+    const ride = await loadRide({ rideNumber: req.params.rideNumber });
     if (!ride) return res.status(404).json({ message: 'Course introuvable' });
-    return res.status(200).json({ data: ride });
+
+    const isPassenger = ride.userId === userId;
+    const isChauffeur = ride.chauffeur?.userId === userId;
+    if (!isPassenger && !isChauffeur && !(await isBimAdminUserId(userId))) {
+      return res.status(403).json({ message: 'Non autorisé pour cette course' });
+    }
+    const data = ride.toJSON();
+    if (!isPassenger) delete data.pickupCode;
+    return res.status(200).json({ data });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+// ── Course en cours du passager (bandeau « course en cours » de l'accueil) ──
+export const getMyActiveRide = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    let ride = await loadRide({ userId, status: LIVE });
+    if (!ride) {
+      ride = await loadRide({ userId, status: 'searching', createdAt: { [Op.gte]: new Date(Date.now() - SEARCH_TTL_MS) } });
+    }
+    return res.status(200).json({ data: ride ? ride.toJSON() : null });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
@@ -468,7 +603,7 @@ export const getUserRides = async (req, res) => {
       order: [['createdAt', 'DESC']],
       limit, offset,
       include: [
-        { model: Chauffeur, as: 'chauffeur', include: [{ model: User, as: 'user', attributes: ['id', 'username', 'imageUrl'] }] },
+        { model: Chauffeur, as: 'chauffeur', attributes: CHAUFFEUR_PUBLIC, include: [{ model: User, as: 'user', attributes: ['id', 'username', 'imageUrl'] }] },
       ],
     });
 
@@ -488,14 +623,23 @@ export const cancelRide = async (req, res) => {
       return res.status(400).json({ message: 'Cette course ne peut plus être annulée' });
     }
 
+    if (ride.status === 'in_progress') {
+      return res.status(400).json({ message: 'La course a déjà démarré : demande au chauffeur de la terminer.' });
+    }
+
+    let chauffeur = null;
     if (ride.chauffeurId) {
-      const chauffeur = await Chauffeur.findByPk(ride.chauffeurId);
+      chauffeur = await Chauffeur.findByPk(ride.chauffeurId);
       if (chauffeur) await chauffeur.update({ isAvailable: true });
     }
     clearOffer(ride.rideId);
 
     await ride.update({ status: 'cancelled', cancelReason: req.body?.reason || 'Annulée par le passager' });
-    emitRideUpdate(ride.rideNumber, { status: 'cancelled' });
+    emitRideUpdate(ride.rideNumber, { rideNumber: ride.rideNumber, status: 'cancelled', reason: ride.cancelReason });
+    if (chauffeur?.userId) {
+      emitToUser(chauffeur.userId, 'ride:status_updated', { rideNumber: ride.rideNumber, status: 'cancelled', reason: ride.cancelReason });
+      pushToUser(chauffeur.userId, '❌ Course annulée', 'Le passager a annulé la course.', { rideNumber: ride.rideNumber }).catch(() => {});
+    }
 
     return res.status(200).json({ message: 'Course annulée' });
   } catch (error) {

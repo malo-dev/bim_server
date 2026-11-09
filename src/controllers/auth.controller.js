@@ -249,7 +249,7 @@ const quickAccess = async (req, res) => {
 // partager un numéro : on essaie chacun, du plus récemment actif au plus ancien.
 //
 // Ancien compte rapide (créé avec le numéro seul, sans mot de passe choisi) :
-// si aucun compte de ce numéro n'a de mot de passe choisi, on répond 403
+// si aucun compte de ce numéro n'a de mot de passe choisi, on répond 401
 // PASSWORD_SETUP_REQUIRED avec un jeton court (15 min) qui permet uniquement
 // d'appeler /auth/setup-password pour créer le mot de passe.
 const issuePhoneSession = async (user, { requestIp, deviceModel, deviceBrand }) => {
@@ -340,7 +340,7 @@ const phoneLogin = async (req, res) => {
           process.env.JWT_SECRET,
           { expiresIn: '15m' }
         );
-        return res.status(403).json({
+        return res.status(401).json({
           code: 'PASSWORD_SETUP_REQUIRED',
           message: 'Veuillez créer un nouveau mot de passe pour accéder à votre compte.',
           setupToken,
@@ -875,7 +875,15 @@ const getUserById = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'Utilisateur introuvable' });
     }
-    res.status(200).json({ ...user.toJSON(), hasActiveSubscription: hasActiveSubscriptionToken(user) });
+    // Jamais de secrets dans la réponse : n'importe quel compte connecté peut
+    // appeler cette route (hash du mot de passe, code OTP de réinitialisation,
+    // jetons de session, code de transaction…).
+    const {
+      password, otp, otpExpires, resetPasswordToken, resetPasswordExpiresAt,
+      refreshToken, token, Token, TokenAbonemment, randomly, randomlyPlain,
+      ...safe
+    } = user.toJSON();
+    res.status(200).json({ ...safe, hasActiveSubscription: hasActiveSubscriptionToken(user) });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
