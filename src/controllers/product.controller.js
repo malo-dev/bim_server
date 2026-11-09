@@ -434,8 +434,10 @@ const BIM_TYPES = {
 const norm = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const hasAny = (text, words) => { const t = norm(text); return words.some((w) => t.includes(norm(w))); };
 
+// Type du catalogue : eau / gaz / carburant, ou null (= « autres produits »).
 export const classifyBimProduct = (p) => {
   // Catégorie choisie explicitement dans l'admin : prioritaire.
+  if (p.bimType === 'autres') return null;
   if (p.bimType && BIM_TYPES[p.bimType]) return p.bimType;
   const sectorName = p.company?.category?.name || '';
   const cats = (p.categories || []).map((c) => c.name);
@@ -455,8 +457,8 @@ export const getBimCatalogue = async (req, res) => {
   try {
     const type = norm(req.query.type || '');
     const search = String(req.query.search || '').trim();
-    if (type && !BIM_TYPES[type]) {
-      return res.status(400).json({ message: 'Type inconnu. Utilisez eau, gaz ou carburant.' });
+    if (type && !BIM_TYPES[type] && type !== 'autres') {
+      return res.status(400).json({ message: 'Type inconnu. Utilisez eau, gaz, carburant ou autres.' });
     }
 
     const where = {};
@@ -483,16 +485,28 @@ export const getBimCatalogue = async (req, res) => {
     const items = [];
     for (const row of rows) {
       const p = row.toJSON();
-      const t = classifyBimProduct(p);
-      if (!t || (type && t !== type)) continue;
+      // « autres » : tout produit qui n'est ni eau, ni gaz, ni carburant.
+      const t = classifyBimProduct(p) || 'autres';
+      if (type ? t !== type : t === 'autres') continue; // sans type : eau/gaz/carburant comme avant
       if (String(p.availability || '').toLowerCase() === 'indisponible') continue;
       const effectivePrice = effectivePriceOf(p);
-      const sectorWords = (BIM_TYPES[t].sector || []);
-      // Sous-catégorie : celle saisie dans l'admin, sinon la première catégorie
-      // produit qui n'est pas juste le nom du type.
-      const sub = (p.bimSub && String(p.bimSub).trim())
-        || (p.categories || []).map((c) => c.name).find((n) => !sectorWords.some((w) => norm(n) === norm(w)))
-        || null;
+      // Commandable seulement avec un vrai prix (pas de « prix à discuter »).
+      if (p.priceOnRequest || !(effectivePrice > 0)) continue;
+
+      let sub;
+      if (t === 'autres') {
+        // Catégorie affichée : saisie admin, sinon catégorie produit, sinon
+        // secteur de l'entreprise (sans le préfixe « BIM »), sinon « Divers ».
+        const sector = String(p.company?.category?.name || '').replace(/^bim\s+/i, '').trim();
+        sub = (p.bimSub && String(p.bimSub).trim()) || p.categories?.[0]?.name || sector || 'Divers';
+      } else {
+        const sectorWords = (BIM_TYPES[t].sector || []);
+        // Sous-catégorie : celle saisie dans l'admin, sinon la première catégorie
+        // produit qui n'est pas juste le nom du type.
+        sub = (p.bimSub && String(p.bimSub).trim())
+          || (p.categories || []).map((c) => c.name).find((n) => !sectorWords.some((w) => norm(n) === norm(w)))
+          || null;
+      }
       items.push({ ...p, type: t, sub, effectivePrice });
     }
 
@@ -540,7 +554,7 @@ const readBimFields = async (body, { partial }) => {
   }
   if (!partial || has('bimType')) {
     const t = norm(body.bimType);
-    if (!BIM_TYPES[t]) return { error: 'Catégorie invalide : choisissez eau, gaz ou carburant.' };
+    if (!BIM_TYPES[t] && t !== 'autres') return { error: 'Catégorie invalide : choisissez eau, gaz, carburant ou autres.' };
     out.bimType = t;
   }
   if (!partial || has('price')) {
@@ -591,7 +605,7 @@ const toBimItem = (row) => {
   const p = row.toJSON ? row.toJSON() : row;
   return {
     ...p,
-    type: classifyBimProduct(p),
+    type: p.bimType === 'autres' ? 'autres' : classifyBimProduct(p),
     sub: p.bimSub || null,
     effectivePrice: effectivePriceOf(p),
     available: String(p.availability || '').toLowerCase() !== UNAVAILABLE,
@@ -601,12 +615,12 @@ const toBimItem = (row) => {
 export const getBimAdminProducts = async (req, res) => {
   try {
     const type = norm(req.query.type || '');
-    if (type && !BIM_TYPES[type]) return res.status(400).json({ message: 'Type inconnu. Utilisez eau, gaz ou carburant.' });
+    if (type && !BIM_TYPES[type] && type !== 'autres') return res.status(400).json({ message: 'Type inconnu. Utilisez eau, gaz, carburant ou autres.' });
     const search = String(req.query.search || '').trim();
     const where = search ? { [Op.or]: [{ name: { [Op.like]: `%${search}%` } }, { description: { [Op.like]: `%${search}%` } }] } : {};
     const rows = await Product.findAll({ where, include: BIM_INCLUDE, order: [['createdAt', 'DESC']] });
     const all = rows.map(toBimItem).filter((p) => p.type);
-    const counts = { eau: 0, gaz: 0, carburant: 0 };
+    const counts = { eau: 0, gaz: 0, carburant: 0, autres: 0 };
     all.forEach((p) => { counts[p.type] += 1; });
     const items = type ? all.filter((p) => p.type === type) : all;
     return res.status(200).json({ data: items, total: items.length, counts });
