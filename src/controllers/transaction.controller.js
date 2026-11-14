@@ -1536,15 +1536,34 @@ export const getRechargesList = async (req, res) => {
 // BIM traite manuellement et approuve/rejette depuis l'admin.
 export const createManualRecharge = async (req, res) => {
   try {
-    const { amount, telephone, method, id } = req.body;
+    const { amount, telephone, method, id, currency: bodyCurrency } = req.body;
 
     if (!id || !amount) {
       return res.status(400).json({ message: 'Données manquantes (id, amount)' });
     }
 
-    const parsedAmount = parseFloat(String(amount).replace(',', '.'));
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+    const typedAmount = parseFloat(String(amount).replace(',', '.'));
+    if (isNaN(typedAmount) || typedAmount <= 0) {
       return res.status(400).json({ message: 'Montant invalide' });
+    }
+
+    // Demande en francs (CDF) : le montant saisi est en FC. Comme pour la
+    // recharge automatique, `amount` est toujours l'équivalent en EC (crédité
+    // à l'approbation) et le montant en FC est gardé dans `convertedAmount`.
+    const currency = String(bodyCurrency || 'USD').toUpperCase() === 'CDF' ? 'CDF' : 'USD';
+    let parsedAmount = typedAmount;
+    let convertedAmount = null;
+    if (currency === 'CDF') {
+      const cdf = await Currency.findOne({ where: { code: 'CDF' } });
+      const rate = Number(cdf?.rate || 0);
+      if (!rate) {
+        return res.status(400).json({ message: 'Taux de change CDF indisponible pour le moment. Réessayez en USD.' });
+      }
+      convertedAmount = typedAmount;
+      parsedAmount = Math.round((typedAmount / rate) * 100) / 100;
+      if (parsedAmount < 0.01) {
+        return res.status(400).json({ message: `Montant trop faible. Minimum : ${Math.ceil(0.01 * rate)} FC.` });
+      }
     }
 
     const user = await User.findByPk(id);
@@ -1561,7 +1580,12 @@ export const createManualRecharge = async (req, res) => {
       orderNumber: method || 'Manuel',   // méthode de paiement choisie
       id,
       status: 'pending',
+      currency,
+      convertedAmount,
     });
+    const shown = currency === 'CDF'
+      ? `${convertedAmount} FC (≈ ${parsedAmount} EC)`
+      : `${parsedAmount} EC`;
 
     // Notifier l'admin en temps réel (dashboard ouvert) + en push (téléphone)
     try {
@@ -1569,12 +1593,12 @@ export const createManualRecharge = async (req, res) => {
     } catch (_) {}
     notifyBimAdmins(
       "🆕 Demande de recharge",
-      `${user.username ?? "Un utilisateur"} demande une recharge de ${parsedAmount} EC (${method || 'Manuel'}).`
+      `${user.username ?? "Un utilisateur"} demande une recharge de ${shown} (${method || 'Manuel'}).`
     ).catch(() => {});
     emitToAdmin('admin:activity', {
       kind: 'recharge',
       title: 'Demande de recharge',
-      message: `${user.username ?? 'Un utilisateur'} demande une recharge de ${parsedAmount} EC (${method || 'Manuel'}).`,
+      message: `${user.username ?? 'Un utilisateur'} demande une recharge de ${shown} (${method || 'Manuel'}).`,
       amount: parsedAmount,
       reference,
       createdAt: new Date().toISOString(),
@@ -1718,6 +1742,15 @@ export const approveRecharge = async (req, res) => {
       result = await creditBim(user.id, parseFloat(recharge.amount), OWNER_EMAIL);
     } catch (e) {
       await recharge.update({ status: 'pending' });
+      // Le solde d'un compte est plafonné (validation du modèle User) : on
+      // l'explique à l'admin au lieu d'un « Erreur serveur » muet.
+      if (e?.name === 'SequelizeValidationError' && (e.errors || []).some((x) => x.path === 'soldNumber')) {
+        const current = parseFloat(user.soldNumber ?? 0);
+        return res.status(400).json({
+          message: `Impossible de créditer ${recharge.amount} EC : le solde dépasserait le plafond autorisé (solde actuel ${current.toFixed(2)} EC). `
+            + (recharge.currency === 'CDF' ? '' : 'Si le client a saisi un montant en francs (FC), refusez la demande et demandez-lui de la refaire.'),
+        });
+      }
       throw e;
     }
     if (!result.ok) {
@@ -1749,7 +1782,7 @@ export const approveRecharge = async (req, res) => {
       newBalance, montantCredite, fraisAbonnement, abonnementActive: !aDejaAbonnement, recharge,
     });
   } catch (error) {
-    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+    res.status(500).json({ message: `Erreur serveur : ${error.message}`, error: error.message });
   }
 };
 
